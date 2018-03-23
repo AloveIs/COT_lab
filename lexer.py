@@ -1,6 +1,11 @@
 #!/usr/bin/python
 
+# documentation of the file
 __doc__='''Simple lexer for PL/0 using generators'''
+
+#PL/0 is a very simple procedural language
+# it has some pascal-like feature
+
 
 # Tokens can have multiple definitions if needed
 symbols =  { 
@@ -15,12 +20,14 @@ symbols =  {
 	'lss'    : ['<'], 
 	'leq'    : ['<='],   
 	'gtr'    : ['>'], 
-	'geq'    : ['>='], 
+	'geq'    : ['>='],
+	'mod'	 : ['%'],
 	'callsym': ['call'], 
-	'beginsym'  : ['begin'], 
+	'beginsym'  : ['begin', '{'], 
 	'semicolon' : [';'], 
-	'endsym'    : ['end'], 
+	'endsym'    : ['end', '}'], 
 	'ifsym'     : ['if'], 
+	'elsesym'	: ['else'],
 	'whilesym'  : ['while'], 
 	'becomes'   : [':='], 
 	'thensym'   : ['then'], 
@@ -31,7 +38,8 @@ symbols =  {
 	'procsym'   : ['procedure'], 
 	'period'    : ['.'], 
 	'oddsym'    : ['odd'],
-	'print'			: ['!', 'print'],
+	'print'		: ['!', 'print'],
+	'input'		: ['?', 'input'],
 }
 
 def token(word):
@@ -41,27 +49,37 @@ def token(word):
 			return s
 	try : # If a terminal is not one of the standard tokens but can be converted to float, then it is a number, otherwise, an identifier
 		float(word)
+		# we are not going to care about the value
 		return 'number'
 	except ValueError, e :
 		return 'ident'
 
 def lexer(text) :
 	'''Generator implementation of a lexer'''
+
+	#Generator: it keeps a state between different invocations
+	#   		it recieves the whole program and splits it
 	import re
 	from string import split, strip, lower, join
 	t=re.split('(\W+)',text) # Split at non alphanumeric sequences
 	text=join(t,' ') # Join alphanumeric and non-alphanumeric, with spaces
-	words=[ strip(w) for w in split(lower(text)) ] # Split tokens
+	words=[ strip(w) for w in split(lower(text)) ] # Split tokens (make it lowercase)
 	for word in words :
-		yield token(word), word
+		yield token(word), word # we return the token and the value/word
 
 
 # Test support
-__test_program='''VAR x, squ;
+__test_program='''
+
+VAR x, squ;
  
 PROCEDURE square;
 BEGIN
    squ := x * x
+   if 2 > 3 then
+   squ := 3
+   else
+   squ := 2
 END;
  
 BEGIN
@@ -72,7 +90,9 @@ BEGIN
       x := x + 1 ;
 			!squ
    END
-END.'''
+END.
+
+'''
 
 if __name__ == '__main__' :
 	for t,w in lexer(__test_program) :

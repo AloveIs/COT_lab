@@ -66,14 +66,17 @@ standard_types = {
 
 class Symbol(object):
 	def __init__(self, name, stype, value=None):
-		self.name=name
+		self.name=name  #string that identifies it
 		self.stype=stype
 		self.value=value # if not None, it is a constant
 
+	# the way in which we can implement the printign facilities
 	def __repr__(self):
 		return self.stype.name+' '+self.name + ( self.value if type(self.value)==str else '')
 
+# it is implemented as a list (it is its extension)
 class SymbolTable(list):
+	# find an object by its name
 	def find(self, name):
 		print 'Looking up', name
 		for s in self :
@@ -95,15 +98,15 @@ class SymbolTable(list):
 class IRNode(object):
 	def __init__(self,parent=None, children=None, symtab=None):
 		self.parent=parent
-		if children :	self.children=children
-		else : self.children=[]
-		self.symtab=symtab
+		if children :	self.children = children
+		else : self.children = []
+		self.symtab = symtab
 	
 	def __repr__(self):
 		from string import split, join
 		attrs = set(['body','cond', 'value','thenpart','elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs', 'global_symtab', 'local_symtab' ]) & set(dir(self))
 
-		res=`type(self)`+' '+`id(self)`+' {\n'
+		res = `type(self)`+' '+`id(self)`+' {\n'
 		try :
 			label=self.getLabel()
 			res=label.name+': '+res
@@ -390,6 +393,15 @@ class Block(Stat):
 		self.defs.parent=self
 
 class PrintStat(Stat):
+	def __init__(self, parent=None, symbol=None, symtab=None):	
+		self.parent=parent
+		self.symbol=symbol
+		self.symtab=symtab
+
+	def collect_uses(self):
+		return [self.symbol]
+
+class InputStat(Stat):
 	def __init__(self, parent=None, symbol=None, symtab=None):	
 		self.parent=parent
 		self.symbol=symbol

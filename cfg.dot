@@ -1,0 +1,6 @@
+digraph G {
+140013177149392 [label="BB140013177149392{\n<class 'ir.AssignStat'>\n<class 'ir.AssignStat'>}"];
+140013177149392 -> exit140013177807424 [label="set([])"];
+main [shape=box];
+main -> 140013177149392 [label="set([])"];
+}

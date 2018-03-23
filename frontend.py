@@ -1,17 +1,23 @@
 #!/usr/bin/python
 
+#this implement the recursive descent parser for PL/0
 __doc__ = '''PL/0 recursive descent parser adapted from Wikipedia'''
 
 from ir import *
 from logger import logger
 
-symbols =  [ 'ident', 'number', 'lparen', 'rparen', 'times', 'slash', 'plus', 'minus', 'eql', 'neq', 'lss', 'leq', 'gtr', 'geq', 'callsym', 'beginsym', 'semicolon', 'endsym', 'ifsym', 'whilesym', 'becomes', 'thensym', 'dosym', 'constsym', 'comma', 'varsym', 'procsym', 'period', 'oddsym' ]
+from lexer import symbols as lex_symbols
+
+
+symbols =  lex_symbols.keys() #[ 'ident', 'number', 'lparen', 'rparen', 'times', 'slash', 'plus', 'minus', 'eql', 'neq', 'lss', 'leq', 'gtr', 'geq', 'callsym', 'beginsym', 'semicolon', 'endsym', 'ifsym', 'whilesym', 'becomes', 'thensym', 'dosym', 'constsym', 'comma', 'varsym', 'procsym', 'period', 'oddsym' ]
 
 sym = None
 value = None
 new_sym = None
 new_value = None
 
+
+# this method updates the global variables
 def getsym():
 	'''Update sym'''
 	global new_sym 
@@ -22,26 +28,41 @@ def getsym():
 		sym=new_sym
 		value=new_value
 		new_sym, new_value=the_lexer.next()
-	except StopIteration :
-		return 2
+	except StopIteration :	# this in case I don't have anymore tokens
+		return 2	# 2 to sognla the end of the program
 	print 'getsym:', new_sym, new_value
 	return 1
 	
 def error(msg):
-	print msg, new_sym, new_value
+	FAIL = '\033[91m'
+	ENDC = '\033[0m'
+	print FAIL, msg, new_sym, new_value, ENDC
 	
+	# if the next symbol is the one we are looking for then we consume it
+	# and return ut
 def accept(s):
 	print 'accepting', s, '==', new_sym
 	return getsym() if new_sym==s else 0
  
+	# if we find the symbol we are expectiong we return 1 otherwhise 0
 def expect(s) :
 	print 'expecting', s
 	if accept(s) : return 1
 	error("expect: unexpected symbol")
 	return 0
  
+###################################
+# Grammar Rules
+#
+# for each rule  aseries of conditional
+# is put for each symbol to accept.
+
+
+#the symbol table is used also for some semantic checks
 @logger
 def factor(symtab) :
+	# we return small parts of the AST, in this case Variables nodes
+	# and also constants
 	if accept('ident') : return Var(var=symtab.find(value), symtab=symtab)
 	if accept('number') : return Const(value=value, symtab=symtab)
 	elif accept('lparen') :
@@ -56,9 +77,10 @@ def factor(symtab) :
 def term(symtab) :
 	op=None
 	expr = factor(symtab)
-	while new_sym in [ 'times', 'slash'] :
+	while new_sym in [ 'times', 'slash', 'mod'] :
 		getsym()
 		op = sym
+		# build and unbalanced tree ( we are keeping the order of the operations)
 		expr2 = factor(symtab)
 		expr = BinExpr(children=[ op, expr, expr2 ], symtab=symtab)
 	return expr
@@ -93,16 +115,18 @@ def condition(symtab) :
 		else :
 			error("condition: invalid operator")
 			getsym();
- 
+
 @logger
 def statement(symtab) :
 	if accept('ident') :
 		target=symtab.find(value)
-		expect('becomes')
+		expect('becomes') # ':='
 		expr=expression(symtab)
 		return AssignStat(target=target, expr=expr, symtab=symtab)
 	elif accept('callsym') :
 		expect('ident')
+		# procedures works on global variables, there are no parameters or 
+		# return values.  
 		return CallStat(call_expr=CallExpr(function=symtab.find(value), symtab=symtab), symtab=symtab)
 	elif accept('beginsym') :
 		statement_list = StatList(symtab=symtab)
@@ -113,9 +137,12 @@ def statement(symtab) :
 		statement_list.print_content()
 		return statement_list
 	elif accept('ifsym') :
-		cond=condition()
+		cond=condition(symtab)
 		expect('thensym')
 		then=statement(symtab)
+		if (accept('elsesym')):
+			else_statements = statement(symtab)
+			return IfStat(cond=cond,thenpart=then, symtab=symtab, elsepart=else_statements)
 		return IfStat(cond=cond,thenpart=then, symtab=symtab)
 	elif accept('whilesym') :
 		cond=condition(symtab)
@@ -124,8 +151,14 @@ def statement(symtab) :
 		return WhileStat(cond=cond, body=body, symtab=symtab)
 	elif accept('print') :
 		expect('ident')
+		# it represent a special node that will
+		# be mapped to a system function call
 		return PrintStat(symbol=symtab.find(value),symtab=symtab)
- 
+	elif accept('input'):
+		expect('ident')
+		return InputStat(symbol=symtab.find(value),symtab=symtab)
+
+
 @logger
 def block(symtab) :
 	local_vars = SymbolTable()
@@ -174,10 +207,25 @@ def program() :
 
 if __name__ == '__main__' :
 	from lexer import lexer, __test_program
-	the_lexer=lexer(__test_program)
+	from sys import argv
+
+	#read from files passed as arguments
+
+	the_lexer = None
+	try:
+		if len(argv) == 1 :
+			the_lexer=lexer(__test_program)	
+		else:
+			from string import join
+			with open(argv[-1], "r") as fin:
+				text = join(fin.readlines())
+			the_lexer = lexer(text)
+	except Exception:
+		the_lexer=lexer(__test_program)
+
+
 	res = program()
 	print '\n', res, '\n'
-			
 	res.navigate(print_stat_list)
 	from support import *
 
