@@ -1,0 +1,11 @@
+CONST a = 2;
+VAR x, squ;
+
+{
+    if odd 3 then
+        squ := 3
+    else
+        squ := 2;
+    x := a * 2;
+    x := 1
+} .

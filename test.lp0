@@ -1,6 +1,0 @@
-VAR x, squ;
- 
-BEGIN
-   x := 2;
-   x := 3
-END.

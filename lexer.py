@@ -3,40 +3,40 @@
 # documentation of the file
 __doc__='''Simple lexer for PL/0 using generators'''
 
-#PL/0 is a very simple procedural language
+# PL/0 is a very simple procedural language
 # it has some pascal-like feature
 
 
 # Tokens can have multiple definitions if needed
-symbols =  { 
-	'lparen' : ['('], 
-	'rparen' : [')'], 
-	'times'  : ['*'], 
-	'slash'  : ['/'], 
-	'plus'   : ['+'], 
-	'minus'  : ['-'], 
-	'eql'    : ['='], 
-	'neq'    : ['!='], 
-	'lss'    : ['<'], 
-	'leq'    : ['<='],   
-	'gtr'    : ['>'], 
+symbols =  {
+	'lparen' : ['('],
+	'rparen' : [')'],
+	'times'  : ['*'],
+	'slash'  : ['/'],
+	'plus'   : ['+'],
+	'minus'  : ['-'],
+	'eql'    : ['='],
+	'neq'    : ['!='],
+	'lss'    : ['<'],
+	'leq'    : ['<='],
+	'gtr'    : ['>'],
 	'geq'    : ['>='],
 	'mod'	 : ['%'],
-	'callsym': ['call'], 
-	'beginsym'  : ['begin', '{'], 
-	'semicolon' : [';'], 
-	'endsym'    : ['end', '}'], 
-	'ifsym'     : ['if'], 
+	'callsym': ['call'],
+	'beginsym'  : ['begin', '{'],
+	'semicolon' : [';'],
+	'endsym'    : ['end', '}'],
+	'ifsym'     : ['if'],
 	'elsesym'	: ['else'],
-	'whilesym'  : ['while'], 
-	'becomes'   : [':='], 
-	'thensym'   : ['then'], 
-	'dosym'     : ['do'], 
-	'constsym'  : ['const'], 
-	'comma'     : [','], 
-	'varsym'    : ['var'], 
-	'procsym'   : ['procedure'], 
-	'period'    : ['.'], 
+	'whilesym'  : ['while'],
+	'becomes'   : [':='],
+	'thensym'   : ['then'],
+	'dosym'     : ['do'],
+	'constsym'  : ['const'],
+	'comma'     : [','],
+	'varsym'    : ['var'],
+	'procsym'   : ['procedure'],
+	'period'    : ['.'],
 	'oddsym'    : ['odd'],
 	'print'		: ['!', 'print'],
 	'input'		: ['?', 'input'],
@@ -47,7 +47,8 @@ def token(word):
 	for s in symbols : 
 		if word in symbols[s] :
 			return s
-	try : # If a terminal is not one of the standard tokens but can be converted to float, then it is a number, otherwise, an identifier
+	try : # If a terminal is not one of the standard tokens but can be converted to float, then it is a number,
+		# otherwise, an identifier
 		float(word)
 		# we are not going to care about the value
 		return 'number'
@@ -55,9 +56,9 @@ def token(word):
 		return 'ident'
 
 def lexer(text) :
-	'''Generator implementation of a lexer'''
+	"""Generator implementation of a lexer"""
 
-	#Generator: it keeps a state between different invocations
+	# Generator: it keeps a state between different invocations
 	#   		it recieves the whole program and splits it
 	import re
 	from string import split, strip, lower, join
