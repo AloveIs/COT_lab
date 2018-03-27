@@ -1,3 +1,5 @@
 *.lnk
 *.exe
 *.svg
+exportToHTML/
+.idea/
