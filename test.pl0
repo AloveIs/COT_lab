@@ -2,10 +2,12 @@ CONST a = 2;
 VAR x, squ;
 
 {
-    if odd 3 then
-        squ := 3
+    if 2 < 3 then
+    x:=2
     else
-        squ := 2;
-    x := a * 2;
+    x:=3;
+    input x;
+    ? x;
+    x := a % 2;
     x := 1
 } .

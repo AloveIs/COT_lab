@@ -62,38 +62,38 @@ def lexer(text) :
 	#   		it recieves the whole program and splits it
 	import re
 	from string import split, strip, lower, join
-	t=re.split('(\W+)',text) # Split at non alphanumeric sequences
-	text=join(t,' ') # Join alphanumeric and non-alphanumeric, with spaces
-	words=[ strip(w) for w in split(lower(text)) ] # Split tokens (make it lowercase)
-	for word in words :
-		yield token(word), word # we return the token and the value/word
+	t = re.split('(\W+)',text) # Split at non alphanumeric sequences
+	text = join(t,' ') # Join alphanumeric and non-alphanumeric, with spaces
+	words = [strip(w) for w in split(lower(text))] # Split tokens (make it lowercase)
+	for word in words:
+		yield token(word), word    # we return the token and the value/word
 
 
 # Test support
-__test_program='''
+__test_program = '''
 
-VAR x, squ;
- 
-PROCEDURE square;
-BEGIN
-   squ := x * x
-   if 2 > 3 then
-   squ := 3
-   else
-   squ := 2
-END;
- 
-BEGIN
-   x := 1;
-   WHILE x <= 10 DO
-   BEGIN
-      CALL square;
-      x := x + 1 ;
-			!squ
-   END
-END.
-
-'''
+	VAR x, squ;
+	 
+	PROCEDURE square;
+	BEGIN
+	   squ := x * x
+	   if 2 > 3 then
+	   squ := 3
+	   else
+	   squ := 2
+	END;
+	 
+	BEGIN
+	   x := 1;
+	   WHILE x <= 10 DO
+	   BEGIN
+		  CALL square;
+		  x := x + 1 ;
+		  !squ
+	   END
+	END.
+	
+	'''
 
 if __name__ == '__main__' :
 	for t,w in lexer(__test_program) :

@@ -238,6 +238,7 @@ if __name__ == '__main__':
                 text = join(fin.readlines())
             the_lexer = lexer(text)
     except Exception:
+        # use the sample program in the lexer module
         the_lexer = lexer(__test_program)
 
     res = program()

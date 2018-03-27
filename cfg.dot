@@ -1,6 +1,6 @@
 digraph G {
-140204078991440 [label="BB140204078991440{\n<class 'ir.AssignStat'>\n<class 'ir.AssignStat'>}"];
-140204078991440 -> exit140204079653392 [label="set([])"];
+77357856L [label="BB77357856L{\n<class 'ir.IfStat'>\n<class 'ir.InputStat'>\n<class 'ir.InputStat'>\n<class 'ir.AssignStat'>\n<class 'ir.AssignStat'>}"];
+77357856L -> exit82114120L [label="set([])"];
 main [shape=box];
-main -> 140204078991440 [label="set([int a2])"];
+main -> 77357856 [label="set([int x, int a2])"];
 }
