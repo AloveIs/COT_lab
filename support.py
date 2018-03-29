@@ -118,3 +118,12 @@ def print_dotty(root, filename):
     dotty = dotty_wrapper(fout)
     for n in node_list: dotty(n)
     fout.write("}\n")
+
+
+__DEBUG = True
+
+def debug(string):
+    if __DEBUG:
+        print '\033[46m' + string + '\033[0m'   # '\033[33m' +
+    else:
+        pass

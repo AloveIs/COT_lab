@@ -46,14 +46,14 @@ class BasicBlock(object):
         from string import join
         instrs = `self.labels` + '\\n' if len(self.labels) else ''
         instrs += join([`type(i)` for i in self.instrs], '\\n')
-        res = `id(self)` + ' [label="BB' + `id(self)` + '{\\n' + instrs + '}"];\n'
+        res = str(id(self)) + ' [label="BB' + str(id(self)) + '{\\n' + instrs + '}"];\n'
         if self.next:
-            res += `id(self)` + ' -> ' + `id(self.next)` + ' [label="' + `self.next.live_in` + '"];\n'
+            res += str(id(self)) + ' -> ' + `id(self.next)` + ' [label="' + `self.next.live_in` + '"];\n'
         if self.target_bb:
-            res += `id(self)` + ' -> ' + `id(
+            res += str(id(self)) + ' -> ' + `id(
                 self.target_bb)` + ' [style=dashed,label="' + `self.target_bb.live_in` + '"];\n'
         if not (self.next or self.target_bb):
-            res += `id(self)` + ' -> ' + 'exit' + `id(self.getFunction())` + ' [label="' + `self.live_out` + '"];\n'
+            res += str(id(self)) + ' -> ' + 'exit' + `id(self.getFunction())` + ' [label="' + `self.live_out` + '"];\n'
         return res
 
     def succ(self):
@@ -190,7 +190,7 @@ class CFG(list):
         for bb in self:
             if label in bb.labels:
                 return bb
-        raise Exception, `label` + ' not found in any BB!'
+        raise Exception, repr(label) + ' not found in any BB!'
 
     def liveness(self):
         '''Standard live variable analysis'''

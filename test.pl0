@@ -6,8 +6,5 @@ VAR x, squ;
     x:=2
     else
     x:=3;
-    input x;
-    ? x;
-    x := a % 2;
-    x := 1
+    ! a
 } .

@@ -184,13 +184,13 @@ def block(symtab):
         expect('eql')
         expect('number')
         # FIXME : the constructor had the last parmeter outside
-        local_vars.append(Symbol(name, standard_types['int'], value= value))
+        local_vars.append(Symbol(name, standard_types['int'], value = value))
         while accept('comma'):
             expect('ident')
             name = value
             expect('eql')
             expect('number')
-            local_vars.append(Symbol(name, standard_types['int'], value= value))
+            local_vars.append(Symbol(name, standard_types['int'], value = value))
         expect('semicolon');
     if accept('varsym'):
         expect('ident')
@@ -241,18 +241,25 @@ if __name__ == '__main__':
         # use the sample program in the lexer module
         the_lexer = lexer(__test_program)
 
-    res = program()
-    print '\n', res, '\n'
-    res.navigate(print_stat_list)
     from support import *
+    res = program()
+    debug("printing the result")
+    print '\n', res, '\n'
+    debug("printing the result - navigation")
+    res.navigate(print_stat_list)
+
+    debug("getting the lis of nodes")
 
     node_list = get_node_list(res)
+
+    debug("printing the list of nodes")
     for n in node_list:
         print type(n), id(n), '->', type(n.parent), id(n.parent)
     print '\nTotal nodes in IR:', len(node_list), '\n'
 
+    debug("----------starting to lowering")
     res.navigate(lowering)
-
+    debug("----------end of lowering")
     node_list = get_node_list(res)
     print '\n', res, '\n'
     for n in node_list:

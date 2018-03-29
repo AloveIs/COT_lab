@@ -1,5 +1,7 @@
 #!/usr/bin/python
 
+from support import debug
+
 __doc__ = '''Intermediate Representation
 Could be improved by relying less on class hierarchy and more on string tags and/or duck typing
 Includes lowering and flattening functions'''
@@ -88,7 +90,8 @@ class SymbolTable(list):
     def find(self, name):
         print 'Looking up', name
         for s in self:
-            if s.name == name: return s
+            if s.name == name:
+                return s
         print 'Looking up failed!'
         return None
 
@@ -114,9 +117,11 @@ class IRNode(object):
 
     def __repr__(self):
         from string import split, join
-        attrs = set(['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs','global_symtab', 'local_symtab']) & set(dir(self))
+        attrs = set(
+            ['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
+             'global_symtab', 'local_symtab']) & set(dir(self))
 
-        res = `type(self)` + ' ' + `id(self)` + ' {\n'
+        res = repr(type(self)) + ' ' + str(id(self)) + ' {\n'
         try:
             label = self.getLabel()
             res = label.name + ': ' + res
@@ -135,16 +140,26 @@ class IRNode(object):
         return res
 
     def navigate(self, action):
+        # call action on the self node
         action(self)
-        attrs = set(['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
+        attrs = set(
+            ['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
              'global_symtab', 'local_symtab']) & set(dir(self))
         if 'children' in dir(self) and len(self.children):
             # print 'navigating children of', type(self), id(self), len(self.children)
-            for node in self.children:
+
+            for i in range(len(self.children)):
                 try:
-                    node.navigate(action)
+                    self.children[i].navigate(action)
                 except Exception:
                     pass
+
+                    ######## ORIGINAL VERSION
+                    # for node in self.children:
+                    #     try:
+                    #         node.navigate(action)
+                    #     except Exception:
+                    #         pass
         for d in attrs:
             try:
                 getattr(self, d).navigate(action)
@@ -152,10 +167,12 @@ class IRNode(object):
                 pass
 
     def replace(self, old, new):
+        debug("#### replacing " + str(id(old)) + " with " + str(id(new)))
         if 'children' in dir(self) and len(self.children) and old in self.children:
             self.children[self.children.index(old)] = new
             return True
-        attrs = set(['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
+        attrs = set(
+            ['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
              'global_symtab', 'local_symtab']) & set(dir(self))
         for d in attrs:
             try:
@@ -265,27 +282,41 @@ class IfStat(Stat):
         self.symtab = symtab
 
     def lower(self):
+        debug("now calling lower on the if statement")
         exit_label = standard_types['label']()
         exit_stat = EmptyStat(self.parent, symtab=self.symtab)
         exit_stat.setLabel(exit_label)
         if self.elsepart:
             then_label = standard_types['label']()
-            else_label = standard_types['label']()
+            # else_label = standard_types['label']()
             # FIXME: there is some confusion to the adresses and branching order
-            self.thenpart.setLabel(else_label)
+            self.thenpart.setLabel(then_label)
             branch_to_then = BranchStat(None, self.cond, then_label, self.symtab)
-            branch_to_exit = BranchStat(None, None, exit_label, self.symtab)
+            try:
+                branch_to_exit = BranchStat(None, None, exit_label, self.symtab)
+            except Exception as e:
+                print e
+            # the statement list has the following elements:
+            # - branch_to_then
+            # - else_part
+            # - branch_to_exit
+            # - then_part
+            # - exit_stat
             stat_list = StatList(self.parent, [branch_to_then, self.elsepart, branch_to_exit, self.thenpart, exit_stat],
                                  self.symtab)
+            debug("now replace happens")
             return self.parent.replace(self, stat_list)
         else:
             branch_to_exit = BranchStat(None, UnExpr(None, ['not', self.cond]), exit_label, self.symtab)
+            # the statement list has the following elements:
+            # - then_part
+            # - exit_stat
             stat_list = StatList(self.parent, [branch_to_exit, self.thenpart, exit_stat], self.symtab)
             return self.parent.replace(self, stat_list)
 
     def collect_uses(self):
         # FIXME: missing collect_uses for the algorithm for the CFG
-        print "#######   actually calling on this node"
+        debug("calling collect_uses on the if_stmt node, this should not happen")
         return self.thenpart.collect_uses() + self.elsepart.collect_uses()
 
 
@@ -344,7 +375,8 @@ class BranchStat(Stat):
         self.parent = parent
         self.cond = cond  # cond == None -> True
         self.target = target
-        self.cond.parent = self
+        if cond:
+            self.cond.parent = self
         self.target.parent = self
         self.symtab = symtab
 
@@ -497,7 +529,7 @@ class DefinitionList(IRNode):
 
 
 def print_stat_list(node):
-    '''Navigation action: print'''
+    """Navigation action: print"""
     print type(node), id(node)
     if type(node) == StatList:
         print 'StatList', id(node), ': [',
