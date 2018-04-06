@@ -60,6 +60,23 @@ class FunctionType(Type):
         self.qual_list = []
 
 
+class RegisterType(Type):
+
+    def __init__(self):
+        self.name = 'register'
+        self.size = 0
+        self.ids = 0
+
+    # TODO: remove target
+    def __call__(self, target=None):
+        self.ids += 1
+        return Symbol(name='register' + str(self.ids), stype=self, value=target)
+
+
+    def __repr__(self):
+        return self.name + str(self.ids)
+
+
 standard_types = {
     'int': Type('int', 32, 'Int'),
     'short': Type('short', 16, 'Int'),
@@ -70,7 +87,9 @@ standard_types = {
     'float': Type('float', 32, 'Float'),
     'label': LabelType(),
     'function': FunctionType(),
+    'register': RegisterType()
 }
+
 
 
 class Symbol(object):
@@ -219,8 +238,25 @@ class Expr(IRNode):
 
 
 class BinExpr(Expr):
+    # to lower this we have to translate it with
+    # assembly code
+    # var -> load statement LoadStat (symbol, sp/fp, dest -> [a register]) we have an infinite number
+    # constant are ok
+
+    # this will be turned into also a BinExpr
+    # with:
+    # - Operator
+    # src1 , src2, destination
+
+    # in order we have to replace the original statement
+    # so we use a StatList with LoadStat and a BinStat with register this time
+
     def getOperands(self):
         return self.children[1:]
+
+    def lower(self):
+        pass
+
 
 
 class UnExpr(Expr):
@@ -330,6 +366,13 @@ class WhileStat(Stat):
         self.symtab = symtab
 
     def lower(self):
+        # move from high level construct to a lower level one
+        # entry : ! cond
+        # branch out
+        # loop : body
+        # branch entry
+        # exit : empty statement
+
         entry_label = standard_types['label']()
         exit_label = standard_types['label']()
         exit_stat = EmptyStat(self.parent, symtab=self.symtab)
@@ -368,6 +411,9 @@ class AssignStat(Stat):
             return self.expr.collect_uses()
         except AttributeError:
             return []
+
+    def lower(self):
+        pass
 
 
 class BranchStat(Stat):
@@ -536,3 +582,13 @@ def print_stat_list(node):
         for n in node.children:
             print id(n),
         print ']'
+
+
+if __name__ == '__main__':
+    a = standard_types['register']()
+    b = standard_types['register']()
+    print a
+    print b
+
+
+
