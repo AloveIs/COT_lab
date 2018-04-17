@@ -1,14 +1,6 @@
 digraph G {
-139899627023184 [label="BB139899627023184{\n<class 'ir.BranchStat'>}"];
-139899627023184 -> 139899627023440 [label="set([int a2])"];
-139899627023184 -> 139899627023504 [style=dashed,label="set([int a2])"];
-139899627023440 [label="BB139899627023440{\n<class 'ir.AssignStat'>\n<class 'ir.BranchStat'>}"];
-139899627023440 -> 139899627023504 [label="set([int a2])"];
-139899627023440 -> 139899627022800 [style=dashed,label="set([int a2])"];
-139899627023504 [label="BB139899627023504{\n[label label2]\n<class 'ir.AssignStat'>}"];
-139899627023504 -> 139899627022800 [label="set([int a2])"];
-139899627022800 [label="BB139899627022800{\n[label label1]\n<class 'ir.EmptyStat'>\n<class 'ir.PrintStat'>}"];
-139899627022800 -> exit139899627713088 [label="set([])"];
+90890368 [label="BB90890368{\n<class 'ir.StoreStat'>}"];
+90890368 -> exit80865680L [label="set([])"];
 main [shape=box];
-main -> 139899627023184 [label="set([int a2])"];
+main -> 90890368 [label="set([int x])"];
 }

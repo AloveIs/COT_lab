@@ -49,7 +49,7 @@ def lowering(node):
         if not check:
             print 'Failed!'
     except Exception, e:
-        # print 'Cannot lower', type(node), e
+        print 'Cannot lower', type(node), e
         pass  # lowering not yet implemented for this class
 
 
@@ -71,14 +71,14 @@ def dotty_wrapper(fout):
 
     def dotty_function(irnode):
         from string import split, join
-        from ir import Stat
+        from ir import Stat, Symbol
         attrs = set(['body', 'cond', 'thenpart', 'elsepart', 'call', 'step', 'expr', 'target', 'defs']) & set(
             dir(irnode))
 
         res = str(id(irnode)) + ' ['
-        if isinstance(irnode, Stat):
+        if isinstance(irnode, Stat) or isinstance(irnode, Symbol):
             res += 'shape=box,'
-        res += 'label="' + `type(irnode)` + ' ' + str(id(irnode))
+        res += 'label="' + str(type(irnode)) + ' ' + str(id(irnode))
         try:
             res += ': ' + str(irnode.value)
         except Exception:
@@ -122,8 +122,9 @@ def print_dotty(root, filename):
 
 __DEBUG = True
 
+
 def debug(string):
     if __DEBUG:
-        print '\033[46m' + string + '\033[0m'   # '\033[33m' +
+        print '\033[46m' + string + '\033[0m'  # '\033[33m' +
     else:
         pass

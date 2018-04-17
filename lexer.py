@@ -55,16 +55,16 @@ def token(word):
 	except ValueError, e :
 		return 'ident'
 
-def lexer(text) :
+def lexer(text):
 	"""Generator implementation of a lexer"""
 
 	# Generator: it keeps a state between different invocations
 	#   		it recieves the whole program and splits it
 	import re
 	from string import split, strip, lower, join
-	t = re.split('(\W+)',text) # Split at non alphanumeric sequences
-	text = join(t,' ') # Join alphanumeric and non-alphanumeric, with spaces
-	words = [strip(w) for w in split(lower(text))] # Split tokens (make it lowercase)
+	t = re.split('(\W+)', text)  # Split at non alphanumeric sequences
+	text = join(t ,' ')  # Join alphanumeric and non-alphanumeric, with spaces
+	words = [strip(w) for w in split(lower(text))]  # Split tokens (make it lowercase)
 	for word in words:
 		yield token(word), word    # we return the token and the value/word
 
@@ -76,7 +76,7 @@ __test_program = '''
 	 
 	PROCEDURE square;
 	BEGIN
-	   squ := x * x
+	   squ := x * x;
 	   if 2 > 3 then
 	   squ := 3
 	   else
@@ -96,5 +96,5 @@ __test_program = '''
 	'''
 
 if __name__ == '__main__' :
-	for t,w in lexer(__test_program) :
+	for t,w in lexer(__test_program):
 		print t, w

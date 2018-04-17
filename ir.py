@@ -61,6 +61,7 @@ class FunctionType(Type):
 
 
 class RegisterType(Type):
+    created_register_list = []
 
     def __init__(self):
         self.name = 'register'
@@ -70,8 +71,10 @@ class RegisterType(Type):
     # TODO: remove target
     def __call__(self, target=None):
         self.ids += 1
-        return Symbol(name='register' + str(self.ids), stype=self, value=target)
-
+        register_name = "register" + str(self.ids)
+        new_register = Symbol(name=register_name, stype=self, value=target)
+        RegisterType.created_register_list.append(new_register)
+        return new_register
 
     def __repr__(self):
         return self.name + str(self.ids)
@@ -91,14 +94,13 @@ standard_types = {
 }
 
 
-
 class Symbol(object):
     def __init__(self, name, stype, value=None):
         self.name = name  # string that identifies it
         self.stype = stype
         self.value = value  # if not None, it is a constant
 
-    # the way in which we can implement the printign facilities
+    # the way in which we can implement the printing facilities
     def __repr__(self):
         return self.stype.name + ' ' + self.name + (self.value if type(self.value) == str else '')
 
@@ -132,6 +134,10 @@ class IRNode(object):
             self.children = children
         else:
             self.children = []
+        for c in self.children:
+            if 'parent' in dir(c):
+                c.parent = self
+
         self.symtab = symtab
 
     def __repr__(self):
@@ -166,19 +172,11 @@ class IRNode(object):
              'global_symtab', 'local_symtab']) & set(dir(self))
         if 'children' in dir(self) and len(self.children):
             # print 'navigating children of', type(self), id(self), len(self.children)
-
             for i in range(len(self.children)):
                 try:
                     self.children[i].navigate(action)
                 except Exception:
                     pass
-
-                    ######## ORIGINAL VERSION
-                    # for node in self.children:
-                    #     try:
-                    #         node.navigate(action)
-                    #     except Exception:
-                    #         pass
         for d in attrs:
             try:
                 getattr(self, d).navigate(action)
@@ -203,6 +201,19 @@ class IRNode(object):
         return False
 
 
+class Register(IRNode):
+    def __init__(self, parent=None, symbol=None, symtab=None):
+        self.parent = parent
+        self.symbol = symbol
+        self.symtab = symtab
+
+    def __repr__(self):
+        res = repr(type(self)) + ' ' + str(id(self)) + ' {\n'
+        res += '\t' + self.symbol.name + '\n'
+        res += '}'
+        return res
+
+
 # CONST and VAR
 class Const(IRNode):
     def __init__(self, parent=None, value=0, symb=None, symtab=None):
@@ -224,6 +235,15 @@ class Var(IRNode):
 
 # EXPRESSIONS
 class Expr(IRNode):
+    def __init__(self, parent=None, children=None, symtab=None, destination_register=None):
+        super(Expr, self).__init__(parent, children, symtab)
+        self.destination_register = destination_register
+
+    def get_destination_register(self):
+        if not self.destination_register:
+            self.destination_register = Register(None, standard_types['register'](), self.symtab)
+        return self.destination_register
+
     def getOperator(self):
         return self.children[0]
 
@@ -255,8 +275,44 @@ class BinExpr(Expr):
         return self.children[1:]
 
     def lower(self):
-        pass
+        # debug("calling lower on " + str(self))
+        # debug("expression ->" + str(self.children[1]) + str(self.children[2]))
+        statement_list = []
+        parameter1 = None
+        parameter2 = None
 
+        try:
+            if isinstance(self.children[1], Var):
+                parameter1 = Register(None, standard_types['register'](), self.symtab)
+                statement_list.append(LoadStat(parameter1, None, symbol=self.children[1], symtab=self.symtab))
+            elif isinstance(self.children[1], Const):
+                parameter1 = self.children[1]
+            elif isinstance(self.children[1], BinExpr):
+                debug("now inspecting : " + str(type(self.children[1])))
+                parameter1 = self.children[1].get_destination_register()
+                self.children[1].lower()
+                statement_list.append(self.children[1])
+            else:
+                debug("Unrecognized token in the expression")
+            if isinstance(self.children[2], Var):
+                parameter2 = Register(None, standard_types['register'](), self.symtab)
+                statement_list.append(LoadStat(parameter2, None, self.children[2], self.symtab))
+            elif isinstance(self.children[2], Const):
+                parameter2 = self.children[2]
+            elif isinstance(self.children[2], BinExpr):
+                debug("now inspecting : " + str(type(self.children[2])))
+                parameter2 = self.children[2].get_destination_register()
+                self.children[2].lower()
+                statement_list.append(self.children[2])
+            else:
+                pass
+            lowered_expression = BinStat(self.children[0], parameter1, parameter2, self.get_destination_register(), self.symtab)
+            statement_list.append(lowered_expression)
+            # debug("starting replacing now " + str(self) + " with " + statement_list)
+        except Exception as e:
+            debug("raising an exception in lowering")
+            print e
+        return self.parent.replace(self, StatList(self.parent, statement_list, self.symtab))
 
 
 class UnExpr(Expr):
@@ -318,7 +374,6 @@ class IfStat(Stat):
         self.symtab = symtab
 
     def lower(self):
-        debug("now calling lower on the if statement")
         exit_label = standard_types['label']()
         exit_stat = EmptyStat(self.parent, symtab=self.symtab)
         exit_stat.setLabel(exit_label)
@@ -340,7 +395,6 @@ class IfStat(Stat):
             # - exit_stat
             stat_list = StatList(self.parent, [branch_to_then, self.elsepart, branch_to_exit, self.thenpart, exit_stat],
                                  self.symtab)
-            debug("now replace happens")
             return self.parent.replace(self, stat_list)
         else:
             branch_to_exit = BranchStat(None, UnExpr(None, ['not', self.cond]), exit_label, self.symtab)
@@ -413,7 +467,20 @@ class AssignStat(Stat):
             return []
 
     def lower(self):
-        pass
+        if isinstance(self.expr, Expr):
+            register = self.expr.get_destination_register()
+            self.expr.lower()
+            store = StoreStat(self.parent, self.symbol, self.symtab, register)
+            res = StatList(self.parent, [self.expr, store], self.symtab)
+            return self.parent.replace(self, res)
+        elif isinstance(self.expr, Const):
+            store = StoreStat(self.parent, self.symbol, self.symtab, self.expr)
+            return self.parent.replace(self, store)
+        elif isinstance(self.expr, Var):
+            load = LoadStat(None, None, self.expr.symbol, self.symtab)
+            store = StoreStat(self.parent, self.symbol, self.symtab, load.get_dest_register())
+            res = StatList(self.parent,[load, store], self.symtab)
+            return self.parent.replace(self, res)
 
 
 class BranchStat(Stat):
@@ -448,23 +515,51 @@ class EmptyStat(Stat):
 
 
 class StoreStat(Stat):
-    def __init__(self, parent=None, symbol=None, symtab=None):
+    def __init__(self, parent=None, symbol=None, symtab=None, value=None):
         self.parent = parent
-        self.symbol = symbol
+        self.store_symbol = symbol
         self.symtab = symtab
+        # the value contains the register or the value to be stored in memory
+        self.store_value = value
+        if not (isinstance(value, Register) or isinstance(value, Const)):
+            raise Exception("Argument of store must be a register or a constant")
+
+        self.children = [Var(self,self.store_symbol, self.symtab), self.store_value]
+        self.store_symbol.parent = self
+        self.store_value.parent = self
 
     def collect_uses(self):
-        return [self.symbol]
+        return [self.store_symbol]
+
+
+class BinStat(Stat):
+    def __init__(self, operation, operand_1, operand_2, destination, parent=None, symtab=None):
+        self.children = [operation, operand_1, operand_2, destination]
+        self.parent = parent
+        self.symtab = symtab
+
+    def get_dest_register(self):
+        return self.children[3]
 
 
 class LoadStat(Stat):
-    def __init__(self, parent=None, symbol=None, symtab=None):
+    def __init__(self, register=None, parent=None, symbol=None, symtab=None):
         self.parent = parent
         self.symbol = symbol
         self.symtab = symtab
+        # self.load_register = load_register
+
+        if register:
+            self.children = [self.symbol, register]
+        else:
+            register = Register(None, standard_types['register'](), self.symtab)
+            self.children = [self.symbol, register]
+
+    def get_dest_register(self):
+        return self.children[1]
 
     def collect_uses(self):
-        return []
+        return [self.symbol]
 
 
 class StatList(Stat):
@@ -485,7 +580,11 @@ class StatList(Stat):
         self.children.append(elem)
 
     def collect_uses(self):
-        return sum([c.collect_uses() for c in self.children])
+        result = []
+        # sum([c.collect_uses() for c in self.children])
+        for c in self.children:
+            result += c.collect_uses()
+        return result
 
     def print_content(self):
         print 'StatList', id(self), ': [',
@@ -510,6 +609,11 @@ class StatList(Stat):
         else:
             print 'Not flattening', id(self), 'into', id(self.parent), 'of type', type(self.parent)
             return False
+
+    def lower(self):
+        for i in range(len(self.children)):
+            if 'lower' in dir(self.children):
+                self.children[i].lower()
 
 
 class Block(Stat):
@@ -589,6 +693,3 @@ if __name__ == '__main__':
     b = standard_types['register']()
     print a
     print b
-
-
-

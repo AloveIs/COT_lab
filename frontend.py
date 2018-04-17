@@ -51,7 +51,8 @@ def accept(s):
 # if we find the symbol we are expectiong we return 1 otherwhise 0
 def expect(s):
     print 'expecting', s
-    if accept(s): return 1
+    if accept(s):
+        return 1
     error("expect: unexpected symbol")
     return 0
 
@@ -72,7 +73,7 @@ def factor(symtab):
     if accept('number'):
         return Const(value=value, symtab=symtab)
     elif accept('lparen'):
-        expr = expression()
+        expr = expression(symtab)
         expect('rparen')
         return expr
     else:
@@ -103,7 +104,7 @@ def expression(symtab):
         op = sym
     expr = term(symtab)
 
-    # FIXME: i changed 'initial_op' to just 'op' into the constructor of UnExp
+    # FIXED_ERROR: i changed 'initial_op' to just 'op' into the constructor of UnExp
     if op:
         expr = UnExpr(children=[op, expr], symtab=symtab)
     while new_sym in ['plus', 'minus']:
@@ -183,14 +184,14 @@ def block(symtab):
         name = value
         expect('eql')
         expect('number')
-        # FIXME : the constructor had the last parmeter outside
-        local_vars.append(Symbol(name, standard_types['int'], value = value))
+        # FIXED_ERROR : the constructor had the last parameter outside
+        local_vars.append(Symbol(name, standard_types['int'], value=value))
         while accept('comma'):
             expect('ident')
             name = value
             expect('eql')
             expect('number')
-            local_vars.append(Symbol(name, standard_types['int'], value = value))
+            local_vars.append(Symbol(name, standard_types['int'], value=value))
         expect('semicolon');
     if accept('varsym'):
         expect('ident')
@@ -242,6 +243,7 @@ if __name__ == '__main__':
         the_lexer = lexer(__test_program)
 
     from support import *
+
     res = program()
     debug("printing the result")
     print '\n', res, '\n'
@@ -256,26 +258,31 @@ if __name__ == '__main__':
     for n in node_list:
         print type(n), id(n), '->', type(n.parent), id(n.parent)
     print '\nTotal nodes in IR:', len(node_list), '\n'
-
     debug("----------starting to lowering")
     res.navigate(lowering)
+
     debug("----------end of lowering")
+    raw_input("press the enter key to continue...")
     node_list = get_node_list(res)
     print '\n', res, '\n'
     for n in node_list:
         print type(n), id(n)
         try:
             n.flatten()
-        except Exception:
-            pass
-    # res.navigate(flattening)
+        except Exception as e:
+            print e
+    res.navigate(flattening)
     print '\n', res, '\n'
 
     print_dotty(res, "log.dot")
+    raw_input("Ended log, now CFG")
 
-    from cfg import *
+    if False:
+        from cfg import *
 
-    cfg = CFG(res)
-    cfg.liveness()
-    cfg.print_liveness()
-    cfg.print_cfg_to_dot("cfg.dot")
+        cfg = CFG(res)
+        cfg.liveness()
+        cfg.print_liveness()
+        cfg.print_cfg_to_dot("cfg.dot")
+
+        print "end of CFG"

@@ -2,9 +2,6 @@ CONST a = 2;
 VAR x, squ;
 
 {
-    if 2 < 3 then
-    x:=2
-    else
-    x:=3;
-    ! a
-} .
+    x := a * squ
+} 
+.
