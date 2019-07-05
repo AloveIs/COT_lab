@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+from graphviz import Digraph
+from texttable import Texttable
+
 __doc__ = '''Support functions for visiting the AST
 These functions expose high level interfaces (passes) for actions that can be applied to multiple IR nodes.'''
 
@@ -17,6 +20,60 @@ def get_node_list(root):
     node_list = []
     root.navigate(register_nodes(node_list))
     return node_list
+
+
+
+
+def rowify(symbol):
+    if symbol.address:
+        addr = str(hex(symbol.address)) + ("" if symbol.level == "global" else "($fp)")
+        return [symbol.name, symbol.stype, symbol.level, addr]
+    return [symbol.name, symbol.stype, symbol.level, symbol.address]
+
+
+def print_symtab(symtab):
+    table = Texttable()
+    table.add_row(['Symbol', 'Type', 'Level', 'Address'])
+
+    for sym in symtab:
+        table.add_row(rowify(sym))
+    print table.draw()
+
+
+
+def print_symbol_tables(ir):
+
+    # recursive part of it to handle the root node
+    def _print_symbol_tables(ir,G):
+        print_symtab(ir.local_symtab)
+        #print_symbol_tables(ir)
+        for c in ir.defs.children:
+            print(c.get_name())
+            _print_symbol_tables(c.body)
+
+
+    # create a symbol table diagram
+    G = Digraph("Symbol Tables")
+
+    # print information about the first node
+    print("Global")
+    label = "GLOBAL:\n"
+
+    for s in ir.local_symtab:
+        label = label + (s.name + "\n")
+
+    G.node("Global", label,  {"shape":"box"})
+
+
+    # print symbol table in terminal
+    print_symtab(ir.local_symtab)
+    #print_symbol_tables(ir)
+    for c in ir.defs.children:
+        print(c.get_name())
+        _print_symbol_tables(c.body,G)
+
+    print(G)
+    G.render('testsymtab.gv', view=True)  # doctest: +SKIP
 
 
 def get_symbol_tables(root):
@@ -69,42 +126,59 @@ def flattening(node):
 def dotty_wrapper(fout):
     '''Main function for graphviz dot output generation'''
 
-    def dotty_function(irnode):
+    def dotty_function(irnode, G):
         from string import split, join
         from ir import Stat, Symbol
         attrs = set(['body', 'cond', 'thenpart', 'elsepart', 'call', 'step', 'expr', 'target', 'defs']) & set(
             dir(irnode))
-
+        # the name as the ID of the object
         res = str(id(irnode)) + ' ['
+        label = ""
         if isinstance(irnode, Stat) or isinstance(irnode, Symbol):
             res += 'shape=box,'
-        res += 'label="' + str(type(irnode)) + ' ' + str(id(irnode))
+        res += 'label="' + str(irnode.__class__.__name__) + ' ' + str(id(irnode))
+        label += str(irnode.__class__.__name__) + ' ' # + str(id(irnode))
         try:
             res += ': ' + str(irnode.value)
+            label += str(irnode.value)
         except Exception:
             pass
         try:
             res += ': ' + irnode.name
+            label += irnode.name
         except Exception:
             pass
         try:
             res += ': ' + getattr(irnode, 'symbol').name
+            label += getattr(irnode, 'symbol').name
         except Exception:
             pass
+
+
+        G.node(str(id(irnode)), label)
+
         res += '" ];\n'
 
         if 'children' in dir(irnode) and len(irnode.children):
             for node in irnode.children:
+                G.edge(str(id(irnode)),str(id(node)))
                 res += str(id(irnode)) + ' -> ' + str(id(node)) + ' [pos=' + `irnode.children.index(node)` + '];\n'
                 if type(node) == str:
+                    G.node(str(id(node)), node)
                     res += str(id(node)) + ' [label=' + node + '];\n'
         for d in attrs:
             node = getattr(irnode, d)
             if d == 'target':
-                res += str(id(irnode)) + ' -> ' + str(id(node.value)) + ' [label=' + node.name + '];\n'
+                from ir import Register
+                if isinstance(node, Register):
+                    res += str(id(irnode)) + ' -> ' + str(id(node)) + ' [label=' + "jump to register_ra" + '];\n'
+                else:
+                    res += str(id(irnode)) + ' -> ' + str(id(node.value)) + ' [label=' + node.name + '];\n'
             else:
+                G.edge(str(id(irnode)),str(id(node)))
                 res += str(id(irnode)) + ' -> ' + str(id(node)) + ';\n'
         fout.write(res)
+ 
         return res
 
     return dotty_function
@@ -112,12 +186,18 @@ def dotty_wrapper(fout):
 
 def print_dotty(root, filename):
     '''Print a graphviz dot representation to file'''
+    G = Digraph("IR representation")
+
     fout = open(filename, "w")
     fout.write("digraph G {\n")
     node_list = get_node_list(root)
     dotty = dotty_wrapper(fout)
-    for n in node_list: dotty(n)
+    
+    for n in node_list: dotty(n, G)
     fout.write("}\n")
+
+    G.render('ir.gv', view=True)
+
 
 
 __DEBUG = True

@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 from support import debug
+from graphviz import Digraph
 
 __doc__ = '''Intermediate Representation
 Could be improved by relying less on class hierarchy and more on string tags and/or duck typing
@@ -57,7 +58,28 @@ class FunctionType(Type):
         self.name = 'function'
         self.size = 0
         self.basetype = 'Function'
+        # label tot he beginning of the body of the function
         self.qual_list = []
+
+
+class Symbol(object):
+    def __init__(self, name, stype, value=None, level=None):
+        self.name = name  # string that identifies it
+        self.stype = stype
+        self.value = value  # if not None, it is a constant
+        self.level = level
+        self.address = None
+        debug("Created : " + self.name + " Value : " + str(self.value))
+
+    # the way in which we can implement the printing facilities
+
+    def instr_dot_repr(self):
+        return self.name
+
+
+    def __repr__(self):
+        return self.stype.name + ' ' + self.name + " " + (self.value if type(self.value) == str else '') + " " + \
+               (("address : " + str(self.address)) if self.address else '')
 
 
 class RegisterType(Type):
@@ -65,16 +87,44 @@ class RegisterType(Type):
 
     def __init__(self):
         self.name = 'register'
+
+        # create base pointer register
+        self.bp = Symbol(name="bp", stype=self, value=None)
+        RegisterType.created_register_list.append(self.bp)
+
+        # create stack pointer register
+        self.sp = Symbol(name="sp", stype=self, value=None)
+        RegisterType.created_register_list.append(self.sp)
+
+        # create instruction pointer register
+        self.ip = Symbol(name="ip", stype=self, value=None)
+        RegisterType.created_register_list.append(self.ip)
+
+        # create return address register
+        self.ra = Symbol(name="ra", stype=self, value=None)
+        RegisterType.created_register_list.append(self.ip)
+
         self.size = 0
         self.ids = 0
 
-    # TODO: remove target
     def __call__(self, target=None):
         self.ids += 1
         register_name = "register" + str(self.ids)
         new_register = Symbol(name=register_name, stype=self, value=target)
         RegisterType.created_register_list.append(new_register)
         return new_register
+
+    def get_bp_register(self):
+        return Register(None, self.bp, None)
+
+    def get_sp_register(self):
+        return Register(None, self.sp, None)
+
+    def get_ip_register(self):
+        return Register(None, self.ip, None)
+
+    def get_ra_register(self):
+        return Register(None, self.ra, None)
 
     def __repr__(self):
         return self.name + str(self.ids)
@@ -93,37 +143,83 @@ standard_types = {
     'register': RegisterType()
 }
 
-
-class Symbol(object):
-    def __init__(self, name, stype, value=None):
-        self.name = name  # string that identifies it
-        self.stype = stype
-        self.value = value  # if not None, it is a constant
-
-    # the way in which we can implement the printing facilities
-    def __repr__(self):
-        return self.stype.name + ' ' + self.name + (self.value if type(self.value) == str else '')
-
+function_labels = {}
 
 # it is implemented as a list (it is its extension)
-class SymbolTable(list):
+class LocalSymbolTable(list):
+
+    def __init__(self, fname, parent=None):
+        super(LocalSymbolTable,self).__init__()
+        self.fname = fname
+        self.parent = parent
+        self.children = []
+
     # find an object by its name
     def find(self, name):
         print 'Looking up', name
         for s in self:
             if s.name == name:
                 return s
-        print 'Looking up failed!'
-        return None
+        if self.parent == None:
+            return None 
+        
+        symb = self.parent.find(name)
+
+        if symb == None:
+            print 'Looking up failed!'
+        
+        return symb
 
     def __repr__(self):
-        res = 'SymbolTable:\n'
+        res = 'LocalSymbolTable:\n'
         for s in self:
             res += repr(s) + '\n'
         return res
 
     def exclude(self, barred_types):
         return [symb for symb in self if symb.stype not in barred_types]
+
+    def instr_dot_repr(self):
+        res = "{" + self.fname 
+        for s in self:
+            res +=  '|{' + s.name + "|" + str(s.stype.name) + "}"
+        return res + "}"
+
+
+class SymbolTable():
+    def __init__(self,ir):
+        # root, the global symbols
+        self.root = ir.local_symtab
+
+        # list of all the symbol tables
+        self.symtab_list = []
+
+        # create the symbol table tree
+        self.__gather_symtab(ir)
+
+
+    def show_graphviz(self):
+        G = Digraph("Symbol Table")
+
+        for table in self.symtab_list:
+            G.node(str(id(table)), table.instr_dot_repr(), {"shape":"record"})
+            for c in table.children:
+                G.edge(str(id(table)), str(id(c)))
+
+        G.render('symtab.gv', view=True)
+
+
+
+    def __gather_symtab(self, ir):
+
+        local_symtab = ir.local_symtab
+        self.symtab_list.append(local_symtab)
+        for c in ir.defs.children:
+
+            local_symtab.children.append(c.body.local_symtab)
+            self.__gather_symtab(c.body)
+
+
 
 
 # IRNODE
@@ -139,6 +235,10 @@ class IRNode(object):
                 c.parent = self
 
         self.symtab = symtab
+
+    def instr_dot_repr(self):
+        res = str(self.__class__.__name__) + " "
+        return res
 
     def __repr__(self):
         from string import split, join
@@ -222,15 +322,24 @@ class Const(IRNode):
         self.symbol = symb
         self.symtab = symtab
 
+    def instr_dot_repr(self):
+        return str(self.value)
+
 
 class Var(IRNode):
     def __init__(self, parent=None, var=None, symtab=None):
         self.parent = parent
+        # Symbol object representing the variable
         self.symbol = var
+        # name of the variable
+        self.name = var
         self.symtab = symtab
 
     def collect_uses(self):
         return [self.symbol]
+
+    def instr_dot_repr(self):
+        return self.symbol.instr_dot_repr()
 
 
 # EXPRESSIONS
@@ -247,6 +356,7 @@ class Expr(IRNode):
     def getOperator(self):
         return self.children[0]
 
+
     def collect_uses(self):
         uses = []
         for c in self.children:
@@ -255,6 +365,9 @@ class Expr(IRNode):
             except AttributeError:
                 pass
         return uses
+
+    def instr_dot_repr(self):
+        return self.children[0]
 
 
 class BinExpr(Expr):
@@ -273,6 +386,13 @@ class BinExpr(Expr):
 
     def getOperands(self):
         return self.children[1:]
+
+
+    def instr_dot_repr(self):
+        operator =  " " + self.children[0] + " "
+        op1 = self.children[1].instr_dot_repr()
+        op2 = self.children[2].instr_dot_repr()
+        return "( " + op1 + operator + op2 + " )"
 
     def lower(self):
         # debug("calling lower on " + str(self))
@@ -306,7 +426,8 @@ class BinExpr(Expr):
                 statement_list.append(self.children[2])
             else:
                 pass
-            lowered_expression = BinStat(self.children[0], parameter1, parameter2, self.get_destination_register(), self.symtab)
+            lowered_expression = BinStat(self.children[0], parameter1, parameter2, self.get_destination_register(),
+                                         symtab=self.symtab)
             statement_list.append(lowered_expression)
             # debug("starting replacing now " + str(self) + " with " + statement_list)
         except Exception as e:
@@ -320,6 +441,12 @@ class UnExpr(Expr):
         return self.children[1]
 
 
+    def instr_dot_repr(self):
+        operand = self.children[0]
+        arg = self.children[1].instr_dot_repr() 
+        return "(" + operand + " " + arg + ")"
+
+
 class CallExpr(Expr):
     def __init__(self, parent=None, function=None, parameters=None, symtab=None):
         self.parent = parent
@@ -329,6 +456,8 @@ class CallExpr(Expr):
         else:
             self.children = []
 
+    def instr_dot_repr(self):
+        return "call " + self.symbol.instr_dot_repr()
 
 # STATEMENTS
 class Stat(IRNode):
@@ -347,6 +476,15 @@ class Stat(IRNode):
         else:
             return self.parent.getFunction()
 
+    def get_function_call_uses(self):
+        return ([],[])
+
+    def enclosing_function(self):
+        p = self.parent
+        while not isinstance(p, FunctionDef):
+            p = p.parent
+        return  p
+
 
 class CallStat(Stat):
     '''Procedure call (non returning)'''
@@ -357,8 +495,55 @@ class CallStat(Stat):
         self.call.parent = self
         self.symtab = symtab
 
+    def get_function_call_uses(self):
+        return ([self.call.symbol.name] , [])
+
     def collect_uses(self):
         return self.call.collect_uses() + self.symtab.exclude([standard_types['function'], standard_types['label']])
+
+    def lower_calls(self):
+        instruction_list = []
+
+        # store $bp, ($sp)
+        # destinazione valore
+        inst = StoreStat(None, standard_types['register'].get_sp_register(), self.symtab,
+                         standard_types['register'].get_bp_register())
+        instruction_list.append(inst)
+        # $bp = $sp
+        inst = BinStat("plus", Const(), standard_types['register'].get_sp_register(),
+                       standard_types['register'].get_bp_register(), self.symtab)
+        instruction_list.append(inst)
+        # $sp = $sp - 8
+        inst = BinStat("minus", standard_types['register'].get_sp_register(), Const(value=8),
+                       standard_types['register'].get_sp_register(), self.symtab)
+        instruction_list.append(inst)
+        # store $ra, 4($sp)   -- saving the return address
+        inst = StoreStat(None, standard_types['register'].get_sp_register(), self.symtab,
+                         value=standard_types['register'].get_ra_register(), offset=4)
+        instruction_list.append(inst)
+        # jump function
+        inst = BranchStat(parent=None, cond=None, target=function_labels[self.call.symbol.name], symtab=self.symtab)
+        instruction_list.append(inst)
+        # $sp = $bp             -- restore stack pointer
+        inst = BinStat("plus", Const(), standard_types['register'].get_bp_register(),
+                       standard_types['register'].get_sp_register(), self.symtab)
+        instruction_list.append(inst)
+        # load $bp, ($sp)      -- restore the base pointer
+        inst = LoadStat(standard_types['register'].get_bp_register(), None,
+                        standard_types['register'].get_sp_register(), self.symtab)
+        instruction_list.append(inst)
+        # load $ra, -4($sp)      -- restore the base pointer
+        inst = LoadStat(standard_types['register'].get_ra_register(), None,
+                        standard_types['register'].get_sp_register(), self.symtab, -4)
+        instruction_list.append(inst)
+        # ...
+
+        lowered = StatList(self.parent, instruction_list, self.symtab)
+        self.parent.replace(self, lowered)
+
+    def instr_dot_repr(self):
+        return self.call.instr_dot_repr()
+
 
 
 class IfStat(Stat):
@@ -460,6 +645,9 @@ class AssignStat(Stat):
         self.expr.parent = self
         self.symtab = symtab
 
+    def instr_dot_repr(self):
+        return self.expr.instr_dot_repr()
+
     def collect_uses(self):
         try:
             return self.expr.collect_uses()
@@ -479,9 +667,11 @@ class AssignStat(Stat):
         elif isinstance(self.expr, Var):
             load = LoadStat(None, None, self.expr.symbol, self.symtab)
             store = StoreStat(self.parent, self.symbol, self.symtab, load.get_dest_register())
-            res = StatList(self.parent,[load, store], self.symtab)
+            res = StatList(self.parent, [load, store], self.symtab)
             return self.parent.replace(self, res)
 
+    def instr_dot_repr(self):
+        return self.symbol.instr_dot_repr() + " := " + self.expr.instr_dot_repr()
 
 class BranchStat(Stat):
     def __init__(self, parent=None, cond=None, target=None, symtab=None):
@@ -507,6 +697,7 @@ class BranchStat(Stat):
             return False
 
 
+
 class EmptyStat(Stat):
     pass
 
@@ -515,21 +706,36 @@ class EmptyStat(Stat):
 
 
 class StoreStat(Stat):
-    def __init__(self, parent=None, symbol=None, symtab=None, value=None):
+    def __init__(self, parent=None, symbol=None, symtab=None, value=None, offset=0):
         self.parent = parent
         self.store_symbol = symbol
+        # offset from the register specified in value
+        self.offset = offset
+        # the symbol is the address where to store the value
+        self.symbol = symbol
         self.symtab = symtab
         # the value contains the register or the value to be stored in memory
         self.store_value = value
         if not (isinstance(value, Register) or isinstance(value, Const)):
             raise Exception("Argument of store must be a register or a constant")
 
-        self.children = [Var(self,self.store_symbol, self.symtab), self.store_value]
+        if isinstance(self.store_symbol, Register) or isinstance(self.store_symbol, Const):
+            self.children = [self.store_symbol, self.store_value]
+        else:
+            self.children = [Var(self, self.store_symbol, self.symtab), self.store_value]
         self.store_symbol.parent = self
         self.store_value.parent = self
 
     def collect_uses(self):
         return [self.store_symbol]
+
+
+    def get_function_call_uses(self):
+        sym = self.symtab.find(self.store_symbol.name)
+        if sym.level != self.enclosing_function().get_name():
+            return [], [sym.level]
+        else :
+            return [], []
 
 
 class BinStat(Stat):
@@ -541,9 +747,13 @@ class BinStat(Stat):
     def get_dest_register(self):
         return self.children[3]
 
+    def collect_uses(self):
+        return []
+
 
 class LoadStat(Stat):
-    def __init__(self, register=None, parent=None, symbol=None, symtab=None):
+    def __init__(self, register=None, parent=None, symbol=None, symtab=None, offset=0):
+        self.offset = offset
         self.parent = parent
         self.symbol = symbol
         self.symtab = symtab
@@ -561,10 +771,16 @@ class LoadStat(Stat):
     def collect_uses(self):
         return [self.symbol]
 
+    def get_function_call_uses(self):
+        sym = self.symtab.find(self.symbol.symbol)
+        if sym and  sym.level != self.enclosing_function().get_name():
+            return [], [sym.level]
+        else :
+            return [], []
+
 
 class StatList(Stat):
     def __init__(self, parent=None, children=None, symtab=None):
-        print 'StatList : new', id(self)
         self.parent = parent
         if children:
             self.children = children[:]
@@ -574,9 +790,17 @@ class StatList(Stat):
             self.children = []
         self.symtab = symtab
 
+    def get_function_call_uses(self):
+        call_uses = ([],[])
+
+        for c in self.children:
+            call_uses = (call_uses[0] + c.get_function_call_uses()[0] ,
+                         call_uses[1] + c.get_function_call_uses()[1])
+
+        return call_uses
+
     def append(self, elem):
         elem.parent = self
-        print 'StatList: appending', id(elem), 'of type', type(elem), 'to', id(self)
         self.children.append(elem)
 
     def collect_uses(self):
@@ -626,6 +850,8 @@ class Block(Stat):
         self.body.parent = self
         self.defs.parent = self
 
+    def get_function_call_uses(self):
+        return self.body.get_function_call_uses()
 
 class PrintStat(Stat):
     def __init__(self, parent=None, symbol=None, symtab=None):
@@ -636,6 +862,15 @@ class PrintStat(Stat):
     def collect_uses(self):
         return [self.symbol]
 
+    def get_function_call_uses(self):
+        sym = self.symtab.find(self.symbol.name)
+        if sym.level != self.enclosing_function().get_name():
+            return [], [sym.level]
+        else :
+            return [], []
+
+    def instr_dot_repr(self):
+        return "print " + self.symbol.instr_dot_repr() 
 
 class InputStat(Stat):
     def __init__(self, parent=None, symbol=None, symtab=None):
@@ -645,6 +880,13 @@ class InputStat(Stat):
 
     def collect_uses(self):
         return [self.symbol]
+
+    def get_function_call_uses(self):
+        sym = self.symtab.find(self.symbol.name)
+        if sym.level != self.enclosing_function().get_name():
+            return [], [sym.level]
+        else :
+            return [], []
 
 
 # DEFINITIONS
@@ -659,10 +901,35 @@ class FunctionDef(Definition):
         self.parent = parent
         self.symbol = symbol
         self.body = body
+        self.function_label = standard_types['label']()
+        # add the pair name/label to the function_labels dictionary
+        function_labels[self.symbol.name] = self.function_label
         self.body.parent = self
+
+    def get_name(self):
+        return self.symbol.name
+
+    def get_used_frame(self):
+        return self.body.body.get_function_call_uses()
+
+    def get_base_label(self):
+        """ returns the Symbol object containing
+            the label used to jump to the function code """
+        return self.function_label
 
     def getGlobalSymbols(self):
         return self.body.global_symtab.exclude([standard_types['function'], standard_types['label']])
+
+    def lower(self):
+        statement_list = self.body.body
+
+        empty = EmptyStat()
+        empty.setLabel(self.function_label)
+
+        br = BranchStat(None, None, standard_types['register'].get_ra_register(), self.getGlobalSymbols())
+        # add branch to return address
+        statement_list.append(br)
+        statement_list.children.insert(0, empty)
 
 
 class DefinitionList(IRNode):

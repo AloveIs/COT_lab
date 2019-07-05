@@ -4,42 +4,119 @@ __doc__ = '''Control Flow Graph implementation
 Includes cfg construction and liveness analysis.'''
 
 from support import get_node_list, get_symbol_tables
+from ir import *
+from graphviz import Digraph
 
 
 class BasicBlock(object):
-    def __init__(self, next=None, instrs=None, labels=None):
+    def __init__(self, block, parents=None):
         '''Structure:
 		Zero, one (next) or two (next, target_bb) successors
 		Keeps information on labels
 		'''
-        self.next = next
-        if instrs:
-            self.instrs = instrs
-        else:
-            self.instrs = []
-        try:
-            self.target = self.instrs[-1].target
-        except Exception:
-            self.target = None
-        if labels:
-            self.labels = labels
-        else:
-            self.labels = []
-        self.target_bb = None
+        self.children = dict()
+        self.visited = False
 
-        self.live_in = set([])
-        self.live_out = set([])
-        self.kill = set([])  # assigned
-        self.gen = set([])  # use before assign
-        from ir import AssignStat, StoreStat
-        for i in instrs:
-            uses = set(i.collect_uses())
-            uses.difference_update(self.kill)
-            self.gen.update(uses)
-            if type(i) in [AssignStat, StoreStat]:
-                self.kill.add(i.symbol)
-        # Total number of registers needed
-        self.total_vars_used = len(self.gen.union(self.kill))
+        if parents is None:
+            self.parents = None
+        else:
+            self.parents = list([parents])
+
+        # list of instructions in the BB
+        self.instrs = []
+        self.__expand_block(block)
+        #self.next = next
+        #if instrs:
+        #    self.instrs = instrs
+        #else:
+        #    self.instrs = []
+        #try:
+        #    self.target = self.instrs[-1].target
+        #except Exception:
+        #    self.target = None
+        #if labels:
+        #    self.labels = labels
+        #else:
+        #    self.labels = []
+        #self.target_bb = None
+        #self.live_in = set([])
+        #self.live_out = set([])
+        #self.kill = set([])  # assigned
+        #self.gen = set([])  # use before assign
+        #from ir import AssignStat, StoreStat
+        #for i in instrs:
+        #    uses = set(i.collect_uses())
+        #    uses.difference_update(self.kill)
+        #    self.gen.update(uses)
+        #    if type(i) in [AssignStat, StoreStat]:
+        #        self.kill.add(i.symbol)
+        ## Total number of registers needed
+        #self.total_vars_used = len(self.gen.union(self.kill))
+
+    def __expand_block(self, instr_list):
+
+        # if block is of class Block
+        if isinstance(instr_list, Block):
+            statlist = instr_list.body.children
+        # if block is a StatList
+        elif isinstance(instr_list, StatList):
+            statlist = instr_list.children
+        elif isinstance(instr_list, list):
+            statlist = instr_list
+        else:
+            print(">>>>>>>>>> Unexpected instr_list | Type : " + str(type(instr_list)))
+            # if it is just one node try to put it in a list
+            if isinstance(instr_list, IRNode):
+                statlist = [instr_list]
+            else:
+                statlist = []
+
+        # Now statlist is a list of instructions
+
+        for index, inst in enumerate(statlist):
+            if isinstance(inst, IfStat):
+                self.instrs.append(inst.cond)
+                self.children["then"] = BasicBlock(inst.thenpart, self)
+                self.children["else"] = BasicBlock(inst.elsepart, self)
+
+                # the remaining instructions
+                bb = BasicBlock(statlist[index + 1:], parents= [self.children["then"], self.children["else"]])
+                self.children["then"].children["next"] = bb
+                self.children["else"].children["next"] = bb
+                break
+            elif isinstance(inst, WhileStat):
+                cond =  BasicBlock(inst.cond,  parents=self)
+                self.children["next"] = cond
+
+                body = BasicBlock(inst.body, cond)
+                cond.children["true"] = body
+                body.children["next"] = cond
+
+                # the remaining instructions
+                rest = BasicBlock(statlist[index + 1:], parents=cond)
+                cond.children["false"] = rest
+            elif isinstance(inst, ForStat):
+                pass
+            else:
+                self.instrs.append(inst)
+
+    def graphviz(self, G):
+        
+        if self.visited is True:
+            return
+        G.node(str(id(self)), self.__instr_dot_format(), {"shape":"record"}) 
+        self.visited = True
+        for label, node in self.children.iteritems():
+            node.graphviz(G)
+            G.edge(str(id(self)), str(id(node)), label=label)
+
+    def __instr_dot_format(self):
+        res = "{"
+        for inst in self.instrs:
+            res += inst.instr_dot_repr() + "|"
+
+        res = res[:-1] + "}"
+        return res
 
     def __repr__(self):
         '''Print in graphviz dot format'''
@@ -127,13 +204,44 @@ class CFG(list):
     '''Control Flow Graph representation'''
 
     def __init__(self, root):
-        from ir import StatList, LabelType
-        stat_lists = [n for n in get_node_list(root) if isinstance(n, StatList)]
-        self += sum([stat_list_to_bb(sl) for sl in stat_lists], [])
-        for bb in self:
-            if bb.target:
-                bb.target_bb = self.find_target_bb(bb.target)
-            bb.remove_useless_next()
+
+        self.cfgs = dict()
+
+        self.__build_CFG("global", root)
+
+        # from ir import StatList, LabelType
+        # stat_lists = [n for n in get_node_list(root) if isinstance(n, StatList)]
+        # self += sum([stat_list_to_bb(sl) for sl in stat_lists], [])
+        # for bb in self:
+        #     if bb.target:
+        #         bb.target_bb = self.find_target_bb(bb.target)
+        #     bb.remove_useless_next()
+
+
+    def __build_CFG(self, fname, block):
+        self.__build_CFG_function(fname, block)
+
+        for c in block.defs.children:
+            self.__build_CFG(c.symbol.name, c.body)
+
+
+    def __build_CFG_function(self, fname, block):
+        print(">>>>> CFG of " + fname)
+
+        self.cfgs[fname] = BasicBlock(block)
+
+    def graphviz(self):
+
+        for fname, cfg in self.cfgs.iteritems():
+            G = Digraph(fname + "CFG")
+
+            G.node(str(id(fname)), fname, {"shape":"house","style":"filled","color":"orange"})
+            G.edge(str(id(fname)), str(id(cfg)))
+
+            cfg.graphviz(G)
+
+            G.view()
+
 
     def heads(self):
         '''Get bbs that are only reached via function call or global entry point'''

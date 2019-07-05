@@ -7,7 +7,7 @@ This is a compiler for the PL\0  language.
 ```c
 program = block "." .
 
-block = [ "const" ident "=" number {"," ident "=" number}* 			";"]
+block = [ "const" ident "=" number {"," ident "=" number}* ";"]
         [ "var" ident {"," ident} ";"]
         { "procedure" ident ";" block ";" }* statement .
 

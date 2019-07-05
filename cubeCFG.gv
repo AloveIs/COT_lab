@@ -1,0 +1,5 @@
+digraph cubeCFG {
+	140625506585504 [label=cube color=orange shape=house style=filled]
+	140625506585504 -> 140625506110480
+	140625506110480 [label="{squ := ( ( x times x ) times x )}" shape=record]
+}

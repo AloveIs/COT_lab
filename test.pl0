@@ -1,7 +1,29 @@
-CONST a = 2;
 VAR x, squ;
-
-{
-    x := a * squ
-} 
-.
+ 
+PROCEDURE square;
+VAR v1, v2;
+    PROCEDURE f;
+    VAR f1,f2;
+        PROCEDURE h;
+        VAR h1,h2;
+        BEGIN
+            CALL square;
+            ! v2 ;
+            ! f1
+        END;
+    BEGIN
+        ! v1
+    END;
+    PROCEDURE g;
+    VAR g1,g2;
+    BEGIN
+        ! g1 ;
+        CALL f
+    END;
+BEGIN
+   squ := x * x
+END;
+ 
+BEGIN
+  CALL square
+END.

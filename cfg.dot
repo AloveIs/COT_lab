@@ -1,6 +1,14 @@
 digraph G {
-90890368 [label="BB90890368{\n<class 'ir.StoreStat'>}"];
-90890368 -> exit80865680L [label="set([])"];
+80230832 [label="BB80230832{\n<class 'ir.CallStat'>}"];
+80230832 -> exit80193056L [label="set([])"];
+80230776 [label="BB80230776{\n<class 'ir.LoadStat'>\n<class 'ir.LoadStat'>\n<class 'ir.BinStat'>\n<class 'ir.StoreStat'>}"];
+80230776 -> exit80100208L [label="set([int squ  address : 268435460, int x  address : 268435456])"];
 main [shape=box];
-main -> 90890368 [label="set([int x])"];
+main -> 80230832 [label="set([int squ  address : 268435460, int x  address : 268435456])"];
+square [shape=box];
+square -> 80230776 [label="set([<class 'ir.Var'> 80099984 {
+	symbol: 	int x  address : 268435456
+}, <class 'ir.Var'> 80099872 {
+	symbol: 	int x  address : 268435456
+}, int x  address : 268435456, int squ  address : 268435460])"];
 }

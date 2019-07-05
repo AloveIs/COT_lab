@@ -1,0 +1,5 @@
+digraph squareCFG {
+	140625506585120 [label=square color=orange shape=house style=filled]
+	140625506585120 -> 140625506110416
+	140625506110416 [label="{squ := ( x times x )}" shape=record]
+}

@@ -71,16 +71,24 @@ def lexer(text):
 
 # Test support
 __test_program = '''
-
+	CONST ciao = 2 , miao = 3 ;
 	VAR x, squ;
-	 
+	
 	PROCEDURE square;
+	VAR gian ;
+		PROCEDURE marco;
+		VAR luca, abc, ab, bc;
+		BEGIN
+		   abc := ab * bc
+		END;
 	BEGIN
-	   squ := x * x;
-	   if 2 > 3 then
-	   squ := 3
-	   else
-	   squ := 2
+	   squ := x * x
+	END;
+
+	PROCEDURE cube;
+	VAR dani;
+	BEGIN
+	   squ := x * x * x
 	END;
 	 
 	BEGIN
@@ -90,9 +98,9 @@ __test_program = '''
 		  CALL square;
 		  x := x + 1 ;
 		  !squ
-	   END
+	   END;
+	   ! x
 	END.
-	
 	'''
 
 if __name__ == '__main__' :

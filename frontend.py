@@ -2,8 +2,16 @@
 
 from ir import *
 from logger import logger
-
+import sys
 from lexer import symbols as lex_symbols
+from lexer import lexer, __test_program
+from sys import argv
+
+
+
+from support import *
+from datalayout import data_layout
+from cfg import *
 
 # this implement the recursive descent parser for PL/0
 __doc__ = '''PL/0 recursive descent parser adapted from Wikipedia'''
@@ -16,6 +24,32 @@ sym = None
 value = None
 new_sym = None
 new_value = None
+
+
+
+
+class FunctionStack(list):
+    def __init__(self):
+        self.level = 0
+
+    def peek(self):
+        if self.level == 0:
+            return "global"
+        return self[self.level - 1]
+
+    def pop(self):
+        r = super(FunctionStack, self).pop(self.level - 1)
+        debug("exiting " + r + " , level is " + str(self.level))
+        self.level -= 1
+        return r
+
+    def push(self, o):
+        self.append(o)
+        self.level += 1
+        debug("entering " + o + " , now level is " + str(self.level))
+
+
+function_stack = FunctionStack()
 
 
 # this method updates the global variables
@@ -69,7 +103,8 @@ def expect(s):
 def factor(symtab):
     # we return small parts of the AST, in this case Variables nodes
     # and also constants
-    if accept('ident'): return Var(var=symtab.find(value), symtab=symtab)
+    if accept('ident'):
+        return Var(var=symtab.find(value), symtab=symtab)
     if accept('number'):
         return Const(value=value, symtab=symtab)
     elif accept('lparen'):
@@ -120,7 +155,7 @@ def condition(symtab):
     if accept('oddsym'):
         return UnExpr(children=['odd', expression(symtab)], symtab=symtab)
     else:
-        expr = expression(symtab);
+        expr = expression(symtab)
         if new_sym in ['eql', 'neq', 'lss', 'leq', 'gtr', 'geq']:
             getsym()
             print 'condition operator', sym, new_sym
@@ -129,15 +164,18 @@ def condition(symtab):
             return BinExpr(children=[op, expr, expr2], symtab=symtab)
         else:
             error("condition: invalid operator")
-            getsym();
+            getsym()
 
 
 @logger
 def statement(symtab):
     if accept('ident'):
         target = symtab.find(value)
+        if target is None:
+            debug("################### is None " + value)
         expect('becomes')  # ':='
         expr = expression(symtab)
+
         return AssignStat(target=target, expr=expr, symtab=symtab)
     elif accept('callsym'):
         expect('ident')
@@ -149,7 +187,7 @@ def statement(symtab):
         statement_list.append(statement(symtab))
         while accept('semicolon'):
             statement_list.append(statement(symtab))
-        expect('endsym');
+        expect('endsym')
         statement_list.print_content()
         return statement_list
     elif accept('ifsym'):
@@ -177,7 +215,7 @@ def statement(symtab):
 
 @logger
 def block(symtab):
-    local_vars = SymbolTable()
+    local_vars = LocalSymbolTable(function_stack.peek(), parent=symtab)
     defs = DefinitionList()
     if accept('constsym'):
         expect('ident')
@@ -185,46 +223,47 @@ def block(symtab):
         expect('eql')
         expect('number')
         # FIXED_ERROR : the constructor had the last parameter outside
-        local_vars.append(Symbol(name, standard_types['int'], value=value))
+        local_vars.append(Symbol(name, standard_types['int'], value=value, level=function_stack.peek()))
         while accept('comma'):
             expect('ident')
             name = value
             expect('eql')
             expect('number')
-            local_vars.append(Symbol(name, standard_types['int'], value=value))
-        expect('semicolon');
+            local_vars.append(Symbol(name, standard_types['int'], value=value, level=function_stack.peek()))
+        expect('semicolon')
     if accept('varsym'):
         expect('ident')
-        local_vars.append(Symbol(value, standard_types['int']))
+        local_vars.append(Symbol(value, standard_types['int'], level=function_stack.peek()))
         while accept('comma'):
             expect('ident')
-            local_vars.append(Symbol(value, standard_types['int']))
-        expect('semicolon');
+            local_vars.append(Symbol(value, standard_types['int'], level=function_stack.peek()))
+        expect('semicolon')
     while accept('procsym'):
         expect('ident')
         fname = value
-        expect('semicolon');
-        local_vars.append(Symbol(fname, standard_types['function']))
-        fbody = block(local_vars)
+        function_stack.push(fname)
+        expect('semicolon')
+        # call block
+        fbody = block(local_vars) # symtab[:] + 
+        function_stack.pop()
+        local_vars.append(Symbol(fname, standard_types['function'], level=function_stack.peek()))
         expect('semicolon')
         defs.append(FunctionDef(symbol=local_vars.find(fname), body=fbody))
-    stat = statement(SymbolTable(symtab[:] + local_vars))
+    # this statement represents the main
+    stat = statement(local_vars) # symtab[:] + 
     return Block(gl_sym=symtab, lc_sym=local_vars, defs=defs, body=stat)
 
 
 @logger
 def program():
     '''Axiom'''
-    global_symtab = SymbolTable()
     getsym()
-    the_program = block(global_symtab)
+    the_program = block(None)
     expect('period')
     return the_program
 
 
 if __name__ == '__main__':
-    from lexer import lexer, __test_program
-    from sys import argv
 
     # read from files passed as arguments
 
@@ -242,15 +281,27 @@ if __name__ == '__main__':
         # use the sample program in the lexer module
         the_lexer = lexer(__test_program)
 
-    from support import *
 
+
+    
     res = program()
-    debug("printing the result")
-    print '\n', res, '\n'
+
+
+    #debug("printing the result")
+    #print '\n', res, '\n'
+    print_dotty(res, "log.dot")
+    #print_symbol_tables(res)
+    
+    symtab = SymbolTable(res)
+    symtab.show_graphviz()
+
+    cfg = CFG(res)
+    cfg.graphviz()
+    sys.exit(0)
     debug("printing the result - navigation")
     res.navigate(print_stat_list)
 
-    debug("getting the lis of nodes")
+    debug("getting the list of nodes")
 
     node_list = get_node_list(res)
 
@@ -258,11 +309,28 @@ if __name__ == '__main__':
     for n in node_list:
         print type(n), id(n), '->', type(n.parent), id(n.parent)
     print '\nTotal nodes in IR:', len(node_list), '\n'
-    debug("----------starting to lowering")
-    res.navigate(lowering)
 
-    debug("----------end of lowering")
+    debug("#### > starting to lowering")
+    res.navigate(lowering)
+    debug("#### < end of lowering")
+
+
+
+    
+
+    debug("#######################################")
+    debug("############ DATA LAYOUT ##############")
+    debug("#######################################")
+
+    data_layout(res)
+
     raw_input("press the enter key to continue...")
+    debug(str(res.global_symtab))
+    debug(str(res.local_symtab))
+    raw_input("press the enter key to continue...")
+
+    raw_input("press the enter key to continue...")
+
     node_list = get_node_list(res)
     print '\n', res, '\n'
     for n in node_list:
@@ -272,17 +340,15 @@ if __name__ == '__main__':
         except Exception as e:
             print e
     res.navigate(flattening)
+
     print '\n', res, '\n'
 
     print_dotty(res, "log.dot")
     raw_input("Ended log, now CFG")
 
-    if False:
-        from cfg import *
 
-        cfg = CFG(res)
-        cfg.liveness()
-        cfg.print_liveness()
-        cfg.print_cfg_to_dot("cfg.dot")
+    cfg.liveness()
+    cfg.print_liveness()
+    cfg.print_cfg_to_dot("cfg.dot")
 
-        print "end of CFG"
+    print "end of CFG"
