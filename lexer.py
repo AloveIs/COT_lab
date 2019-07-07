@@ -75,7 +75,7 @@ __test_program = '''
 	VAR x, squ;
 	
 	PROCEDURE square;
-	VAR gian ;
+	VAR gian, maria, culo ;
 		PROCEDURE marco;
 		VAR luca, abc, ab, bc;
 		BEGIN
@@ -90,15 +90,23 @@ __test_program = '''
 	BEGIN
 	   squ := x * x * x
 	END;
-	 
+	
 	BEGIN
 	   x := 1;
 	   WHILE x <= 10 DO
 	   BEGIN
 		  CALL square;
 		  x := x + 1 ;
+		  IF x < 2 THEN
+			  BEGIN
+				  ! x
+		      END
+		  ELSE
+			  BEGIN
+				  ! squ
+		      END;
 		  !squ
-	   END;
+	   	END;
 	   ! x
 	END.
 	'''

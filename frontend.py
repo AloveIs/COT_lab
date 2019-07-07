@@ -191,12 +191,16 @@ def statement(symtab):
         statement_list.print_content()
         return statement_list
     elif accept('ifsym'):
+        debug("got if")
         cond = condition(symtab)
         expect('thensym')
         then = statement(symtab)
+        debug("got then")
         if accept('elsesym'):
+            debug("there is the else")
             else_statements = statement(symtab)
             return IfStat(cond=cond, thenpart=then, symtab=symtab, elsepart=else_statements)
+        debug("returning if stat if")
         return IfStat(cond=cond, thenpart=then, symtab=symtab)
     elif accept('whilesym'):
         cond = condition(symtab)
@@ -283,20 +287,35 @@ if __name__ == '__main__':
 
 
 
-    
+    # Build the syntactic tree/IR tree
     res = program()
-
 
     #debug("printing the result")
     #print '\n', res, '\n'
     print_dotty(res, "log.dot")
     #print_symbol_tables(res)
     
+    # the whole symbol table
+    # as a tree structure
     symtab = SymbolTable(res)
     symtab.show_graphviz()
 
+
+    # build the CFG from the IR
     cfg = CFG(res)
+    
+    # show the CFG for each
+    # function
     cfg.graphviz()
+
+
+    # put the CFG into SSA form
+    cfg.SSA()
+
+    # show the CFG in SSA for each
+    # function
+    cfg.graphviz()
+
     sys.exit(0)
     debug("printing the result - navigation")
     res.navigate(print_stat_list)

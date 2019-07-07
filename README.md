@@ -40,3 +40,10 @@ factor = ident | number | "(" expression ")".
 
 - [webraphviz](http://www.webgraphviz.com/)
 - [GraphvizOnline](https://dreampuf.github.io/GraphvizOnline/)
+
+
+# Problems to fix
+
+ - In the construction of the CFG if we have 2 omonymous functions one will overwrite the CFG of the other one
+ - Test the for loop
+ - Functions can call only other functions that have been previously defined 

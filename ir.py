@@ -154,6 +154,8 @@ class LocalSymbolTable(list):
         self.parent = parent
         self.children = []
 
+        self.temp_counter = 0
+
     # find an object by its name
     def find(self, name):
         print 'Looking up', name
@@ -184,6 +186,12 @@ class LocalSymbolTable(list):
         for s in self:
             res +=  '|{' + s.name + "|" + str(s.stype.name) + "}"
         return res + "}"
+
+    def get_temp_variable(self):
+
+        tempname = "temp_" + str(self.temp_counter) + "_" + self.fname
+
+        return Symbol(tempname, stype=standard_types["int"],level=self.fname)
 
 
 class SymbolTable():
@@ -300,6 +308,9 @@ class IRNode(object):
                 pass
         return False
 
+    def to_SSA(self):
+        return self
+
 
 class Register(IRNode):
     def __init__(self, parent=None, symbol=None, symtab=None):
@@ -369,6 +380,9 @@ class Expr(IRNode):
     def instr_dot_repr(self):
         return self.children[0]
 
+    def to_SSA(self):
+        pass
+
 
 class BinExpr(Expr):
     # to lower this we have to translate it with
@@ -436,6 +450,38 @@ class BinExpr(Expr):
         return self.parent.replace(self, StatList(self.parent, statement_list, self.symtab))
 
 
+    def to_SSA(self):
+
+        op = self.children[0]
+        op1 = self.children[1]
+        op2 = self.children[2]
+
+        new_op1 = op1
+        new_op2 = op2
+
+        # ssa list of the instructions needed to perform the 
+        # original expression
+
+        res = []
+
+        if not(isinstance(op1, Var) or isinstance(op1, Const)):
+            new_op1 = self.symtab.get_temp_variable()
+
+            previous_ssa_list1, new_exp1 = op1.to_SSA()
+            res.extend(previous_ssa_list1)
+            res.append(AssignStat(target=new_op1, expr=new_exp1, symtab=self.symtab))
+
+
+        if not(isinstance(op2, Var) or isinstance(op2, Const)):
+            new_op2 = self.symtab.get_temp_variable()
+
+            previous_ssa_list2, new_exp2 = op2.to_SSA()
+            res.append(AssignStat(target=new_op21, expr=new_exp2, symtab=self.symtab))
+
+        newBinExpr = BinExpr(children=[op, new_op1, new_op2], symtab=self.symtab)
+
+        return (res, newBinExpr)
+
 class UnExpr(Expr):
     def getOperand(self):
         return self.children[1]
@@ -457,6 +503,7 @@ class CallExpr(Expr):
             self.children = []
 
     def instr_dot_repr(self):
+        print("Hey i'm here")
         return "call " + self.symbol.instr_dot_repr()
 
 # STATEMENTS
@@ -672,6 +719,18 @@ class AssignStat(Stat):
 
     def instr_dot_repr(self):
         return self.symbol.instr_dot_repr() + " := " + self.expr.instr_dot_repr()
+
+    def to_SSA(self):
+
+        if isinstance(self.expr, Var) or isinstance(self.expr, Const):
+            return AssignStat(target=self.symbol, expr=self.expr, symtab=self.symtab)
+
+        SSA_list, expr_ssa = self.expr.to
+        _SSA()
+
+        SSA_list.append(AssignStat(target=self.symbol, expr=expr_ssa, symtab=self.symtab))
+
+        return SSA_list
 
 class BranchStat(Stat):
     def __init__(self, parent=None, cond=None, target=None, symtab=None):
