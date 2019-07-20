@@ -6,6 +6,7 @@ import sys
 from lexer import symbols as lex_symbols
 from lexer import lexer, __test_program
 from sys import argv
+from call_graph import CallGraph
 
 
 
@@ -31,22 +32,24 @@ new_value = None
 class FunctionStack(list):
     def __init__(self):
         self.level = 0
+        self.global_sym = Symbol("global", standard_types['function'], level=None)
+        self.global_sym.level = self.global_sym
 
     def peek(self):
         if self.level == 0:
-            return "global"
+            return self.global_sym
         return self[self.level - 1]
 
     def pop(self):
         r = super(FunctionStack, self).pop(self.level - 1)
-        debug("exiting " + r + " , level is " + str(self.level))
+        debug("exiting " + r.name + " , level is " + str(self.level))
         self.level -= 1
         return r
 
     def push(self, o):
         self.append(o)
         self.level += 1
-        debug("entering " + o + " , now level is " + str(self.level))
+        debug("entering " + o.name + " , now level is " + str(self.level))
 
 
 function_stack = FunctionStack()
@@ -245,12 +248,13 @@ def block(symtab):
     while accept('procsym'):
         expect('ident')
         fname = value
-        function_stack.push(fname)
+        fsym = Symbol(fname, standard_types['function'], level=function_stack.peek())
+        function_stack.push(fsym)
         expect('semicolon')
         # call block
         fbody = block(local_vars) # symtab[:] + 
         function_stack.pop()
-        local_vars.append(Symbol(fname, standard_types['function'], level=function_stack.peek()))
+        local_vars.append(fsym)
         expect('semicolon')
         defs.append(FunctionDef(symbol=local_vars.find(fname), body=fbody))
     # this statement represents the main
@@ -290,9 +294,13 @@ if __name__ == '__main__':
     # Build the syntactic tree/IR tree
     res = program()
 
+    res.navigate(constant_propagation)
+
     #debug("printing the result")
     #print '\n', res, '\n'
     print_dotty(res, "log.dot")
+
+
     #print_symbol_tables(res)
     
     # the whole symbol table
@@ -316,6 +324,19 @@ if __name__ == '__main__':
     # function
     cfg.graphviz()
 
+    call_graph = CallGraph(cfg, symtab)
+
+    call_graph.graphviz()
+    
+    debug("#######################################")
+    debug("############ DATA LAYOUT ##############")
+    debug("#######################################")
+
+    data_layout(symtab, call_graph)
+
+
+    cfg.liveness_graphs(show=True)
+
     sys.exit(0)
     debug("printing the result - navigation")
     res.navigate(print_stat_list)
@@ -337,9 +358,6 @@ if __name__ == '__main__':
 
     
 
-    debug("#######################################")
-    debug("############ DATA LAYOUT ##############")
-    debug("#######################################")
 
     data_layout(res)
 

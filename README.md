@@ -44,6 +44,7 @@ factor = ident | number | "(" expression ")".
 
 # Problems to fix
 
- - In the construction of the CFG if we have 2 omonymous functions one will overwrite the CFG of the other one
+ - In the construction of the CFG if we have 2 omonymous functions one will overwrite the CFG of the other one (only the graph because of the name)
  - Test the for loop
  - Functions can call only other functions that have been previously defined 
+ - call cannot be the first instruciton in a BB

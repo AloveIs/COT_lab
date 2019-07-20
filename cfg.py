@@ -7,6 +7,113 @@ from support import get_node_list, get_symbol_tables
 from ir import *
 from graphviz import Digraph
 
+class LivenessNode:
+
+    def __init__(self,statement):
+
+        self.children = []
+
+        self.statement = statement
+
+        self.defs = statement.get_uses()
+        self.uses = statement.get_defs()
+        self.visted = False
+
+    def add_follower(self, node):
+        self.children.append(node)
+
+    def unvisit(self):
+        self.visited = False
+
+    def dot_format(self):
+        return self.statement.instr_dot_repr()
+
+class LivenessGraph:
+
+    def __init__(self,root_BB):
+
+        self.node_list = []
+
+        # create the graph
+        self.create(root_BB)
+
+
+    def create(self, BB):
+
+        BB.visted = True
+
+        root = LivenessNode(BB.instrs[0])
+        self.node_list.append(root)
+        current_node = root
+        prev = None
+        for i in range(1, len(BB.instrs)):
+            prev = current_node
+            current_node = LivenessNode(BB.instrs[i])
+            self.node_list.append(current_node)
+            prev.add_follower(current_node)
+
+        # the last one must be added to the begining of the other BB
+        for child in BB.children.values():
+            if child is None:
+                continue
+            current_node.add_follower(self._create_recursion(child))
+
+        self.root = root
+
+
+    def _create_recursion(self, BB):
+
+        if BB.visited:
+            return self.find_node(BB.instrs[0])
+        else:
+            # mark the BB as visted
+            BB.visited = True
+
+        root = LivenessNode(BB.instrs[0])
+        self.node_list.append(root)
+        current_node = root
+        prev = None
+        for i in range(1, len(BB.instrs)):
+            prev = current_node
+            current_node = LivenessNode(BB.instrs[i])
+            self.node_list.append(current_node)
+            prev.add_follower(current_node)
+
+        # the last one must be added to the begining of the other BB
+
+
+        for key, child in BB.children.items():
+            print("\tkey :" + str(key))
+            if child is None:
+                continue
+            current_node.add_follower(self._create_recursion(child))
+
+        return root
+
+    def find_node(self, instr):
+        for node in self.node_list:
+            if node.statement == instr:
+                return node
+        return None
+
+
+    def _unvisit(self):
+        for node in self.node_list:
+            node.unvisit()
+
+    def graphviz(self):
+
+        G = Digraph(str(id(self)))
+
+        for node in self.node_list:
+            G.node(str(id(node)), node.dot_format(), {"shape":"record"}) 
+
+            for c in node.children:
+                label = "{ }"
+                G.edge(str(id(node)), str(id(c)), label=label)
+
+        G.view()
+
 
 class BasicBlock(object):
     def __init__(self, block, parents=None, next=None):
@@ -27,6 +134,55 @@ class BasicBlock(object):
         # list of instructions in the BB
         self.instrs = []
         self.__expand_block(block)
+
+
+    def get_all_blocks(self):
+        """Get the list of all the BB reachable from the node"""
+        if self.visited is True:
+            return []
+
+        res = [self]
+        self.visited = True
+
+        for c in self.children.values():
+            if c is None:
+                continue
+            res.extend(c.get_all_blocks())
+        return res
+
+    def _get_function_calls(self):
+
+        res = set()
+
+        for inst in self.instrs:
+            if isinstance(inst, CallStat):
+                # get the symbol of the function called
+                res.add(inst.call.symbol)
+            if isinstance(inst, CallExpr):
+                # get the symbol of the function called
+                res.add(inst.symbol)
+        return res
+
+    def _get_used_vars(self):
+        res = set()
+
+        # if there are no instructions
+        if len(self.instrs) == 0:
+            return self.children.values()[0]._get_used_vars()
+
+        symtab = self.instrs[0].local_symtab
+
+        res.update(symtab.get_external_var())
+        return res
+
+    def _get_function_dependency(self):
+        dep = set()
+
+        for inst in self.instrs:
+            dep.update(inst._get_symbol_level())
+
+        # remove this function and global
+        return dep
 
 
     def add_parent(self, parent):
@@ -116,7 +272,7 @@ class BasicBlock(object):
                 rest = BasicBlock(statlist[index + 1:], parents=None ,next=self.children["next"])
                 if len(self.instrs) == 0:
                     # if no other instructions in the BB
-                    # then do not create one only for the 
+                    # then do not create another BB 
                     self.instrs.append(inst.call)
                     self.children["next"] = rest
                     rest.add_parent(self)
@@ -175,40 +331,111 @@ class CFG(list):
         self.BB_list = dict()
 
         # build CFG recursively
-        self.__build_CFG("global", root)
+        self.__build_CFG(root.local_symtab.fsym, root)
 
+        # which other functions a function calls
+        self.function_calls = dict()
 
-    def __build_CFG(self, fname, block):
-        self.__build_CFG_function(fname, block)
+        # Which functions' $sp each function
+        # must save 
+        self.function_dependency = dict()
+
+        # Which variables from other
+        # functions each function uses
+        self.used_var = dict()
+
+    def __build_CFG(self, fsym, block):
+        self.__build_CFG_function(fsym, block)
 
         # look for other functions to inspect
         for c in block.defs.children:
-            self.__build_CFG(c.symbol.name, c.body)
+            self.__build_CFG(c.symbol, c.body)
 
 
-    def __build_CFG_function(self, fname, block):
+    def __build_CFG_function(self, fsym, block):
         
         # build the CFG of a function in the program
-        print(">>>>> CFG of " + fname)
-        self.cfgs[fname] = BasicBlock(block)
-        self.BB_list[fname]
+        print(">>>>> CFG of " + fsym.name)
+        self.cfgs[fsym] = BasicBlock(block)
+        self.BB_list[fsym] = self.cfgs[fsym].get_all_blocks()
+        self.cfgs[fsym]._graphviz_unvisit()
+        print(len(self.BB_list[fsym]))
 
+
+
+    def get_function_calls(self):
+
+        # rename it for more readable code
+        fun_calls = self.function_calls
+
+        for fsym in self.cfgs.keys():
+            fun_calls[fsym] = set()
+
+            for BB in self.BB_list[fsym]:
+                fun_calls[fsym].update(BB._get_function_calls())
+
+        for f, v in fun_calls.items():
+            print(f.name  + "calls ")
+            for j in v:
+                print("\t" + j.name)
+
+
+        return fun_calls
 
     def graphviz(self):
 
-        for fname, cfg in self.cfgs.iteritems():
-            G = Digraph(fname + "CFG")
+        for fsym, cfg in self.cfgs.iteritems():
+            G = Digraph(fsym.name + "CFG" + str(id(fsym)))
 
-            G.node(str(id(fname)), fname, {"shape":"house","style":"filled","color":"orange"})
-            G.node(str(0),"End "  + fname, {"shape":"house","style":"filled","color":"red"})
-            G.edge(str(id(fname)), str(id(cfg)))
+            G.node(str(id(fsym)), fsym.name, {"shape":"house","style":"filled","color":"orange"})
+            G.node(str(0),"End "  + fsym.name, {"shape":"house","style":"filled","color":"red"})
+            G.edge(str(id(fsym)), str(id(cfg)))
 
             cfg._graphviz_unvisit()
             cfg.graphviz(G)
             G.view()
 
     def SSA(self):
-
-        for fname, cfg in self.cfgs.iteritems():
-            print("SSA in " + fname)
+        """ Put the CFG int SSA form """
+        for fsym, cfg in self.cfgs.iteritems():
+            print("SSA in " + fsym.name)
             cfg.to_SSA()
+ 
+
+    def get_function_dependency(self):
+        """ Obtain whose base pointer I need to keep track of """
+        fun_dep = self.function_dependency
+        used_var = self.used_var
+
+        for fsym in self.cfgs.keys():
+            fun_dep[fsym] = set()
+            used_var[fsym] = set()
+            for BB in self.BB_list[fsym]:
+                fun_dep[fsym].update(BB._get_function_dependency())
+            
+            fun_dep[fsym].discard(fsym)
+            
+            used_var[fsym].update(self.BB_list[fsym][0]._get_used_vars())
+
+
+        for f, v in fun_dep.items():
+            print(f.name  + " uses ")
+            for j in v:
+                print("\t" + str(j))
+
+        return fun_dep
+
+    def liveness_graphs(self, show=False):
+
+        self.liveness_graphs = dict()
+
+        for fsym in self.cfgs.keys():
+            print(">>> Computing liveness grpah of " + fsym.name) 
+            self.cfgs[fsym]._graphviz_unvisit()
+            self.liveness_graphs[fsym] = LivenessGraph(self.cfgs[fsym])
+
+
+        if show:
+            for fsym in self.cfgs.keys(): 
+                self.liveness_graphs[fsym].graphviz()
+            

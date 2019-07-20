@@ -1,0 +1,7 @@
+digraph squareCFG139736917508816 {
+	139736917508816 [label=square color=orange shape=house style=filled]
+	0 [label="End square" color=red shape=house style=filled]
+	139736917508816 -> 139736917540304
+	139736917540304 [label="{squ := ( x times x )}" shape=record]
+	139736917540304 -> 0
+}

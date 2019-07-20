@@ -1,7 +1,0 @@
-digraph cubeCFG {
-	140700635506032 [label=cube color=orange shape=house style=filled]
-	0 [label="End cube" color=red shape=house style=filled]
-	140700635506032 -> 140700635512784
-	140700635512784 [label="{temp_0_cube := ( x times x )|squ := ( temp_0_cube times x )}" shape=record]
-	140700635512784 -> 0
-}

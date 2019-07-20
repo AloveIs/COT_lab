@@ -79,7 +79,7 @@ __test_program = '''
 		PROCEDURE marco;
 		VAR luca, abc, ab, bc;
 		BEGIN
-		   abc := ab * bc
+		   abc := ab * bc * gian
 		END;
 	BEGIN
 	   squ := x * x
@@ -87,8 +87,15 @@ __test_program = '''
 
 	PROCEDURE cube;
 	VAR dani;
+	PROCEDURE marco;
+		VAR luca, abc, ab, bc;
+		BEGIN
+		   abc := ab * bc * x
+		END;
 	BEGIN
-	   squ := x * x * x
+	   CALL marco;
+	   dani := 2 * 3;
+	   dani := 2
 	END;
 	
 	BEGIN
@@ -96,6 +103,7 @@ __test_program = '''
 	   WHILE x <= 10 DO
 	   BEGIN
 		  CALL square;
+		  CALL cube ;
 		  x := x + 1 ;
 		  IF x < 2 THEN
 			  BEGIN

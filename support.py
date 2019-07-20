@@ -97,6 +97,17 @@ def get_symbol_tables(root):
     return node_list
 
 
+def constant_propagation(node):
+    try:
+        node.constant_propagation()
+    except Exception, e:
+        print 'Cannot Perform Constat Prop', type(node), e
+        pass  # lowering not yet implemented for this class
+
+
+
+
+
 def lowering(node):
     '''Lowering action for a node
 	(all high level nodes can be lowered to lower-level representation'''

@@ -1,0 +1,25 @@
+digraph globalCFG140153618605840 {
+	140153618605840 [label=global color=orange shape=house style=filled]
+	0 [label="End global" color=red shape=house style=filled]
+	140153618605840 -> 140153617617104
+	140153617617104 [label="{x := 1}" shape=record]
+	140153617644752 [label="{( x leq 10 )}" shape=record]
+	140153617644688 [label="{print x}" shape=record]
+	140153617644688 -> 0
+	140153617644752 -> 140153617644688 [label=false]
+	140153617644816 [label="{call square}" shape=record]
+	140153617644944 [label="{call cube}" shape=record]
+	140153617645072 [label="{x := ( x plus 1 )|( x lss 2 )}" shape=record]
+	140153617645264 [label="{print x}" shape=record]
+	140153617645200 [label="{print squ}" shape=record]
+	140153617645200 -> 140153617644752 [label=next]
+	140153617645264 -> 140153617645200 [label=next]
+	140153617645072 -> 140153617645264 [label=then]
+	140153617645328 [label="{print squ}" shape=record]
+	140153617645328 -> 140153617645200 [label=next]
+	140153617645072 -> 140153617645328 [label=else]
+	140153617644944 -> 140153617645072 [label=next]
+	140153617644816 -> 140153617644944 [label=next]
+	140153617644752 -> 140153617644816 [label=true]
+	140153617617104 -> 140153617644752 [label=next]
+}

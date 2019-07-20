@@ -1,0 +1,7 @@
+digraph 140674294761016 {
+	140674294760080 [label="call marco" shape=record]
+	140674294760080 -> 140674294761088 [label="{ }"]
+	140674294761088 [label="dani := ( 2 times 3 )" shape=record]
+	140674294761088 -> 140674294761664 [label="{ }"]
+	140674294761664 [label="dani := 2" shape=record]
+}

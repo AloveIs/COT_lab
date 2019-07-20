@@ -63,11 +63,12 @@ class FunctionType(Type):
 
 
 class Symbol(object):
-    def __init__(self, name, stype, value=None, level=None):
+    def __init__(self, name, stype, value=None, level=None, temp=False):
         self.name = name  # string that identifies it
         self.stype = stype
         self.value = value  # if not None, it is a constant
         self.level = level
+        self.temp = temp
         self.address = None
         debug("Created : " + self.name + " Value : " + str(self.value))
 
@@ -148,9 +149,10 @@ function_labels = {}
 # it is implemented as a list (it is its extension)
 class LocalSymbolTable(list):
 
-    def __init__(self, fname, parent=None):
+    def __init__(self, fsym, parent=None):
         super(LocalSymbolTable,self).__init__()
-        self.fname = fname
+        # symbol of the funciton
+        self.fsym = fsym
         self.parent = parent
         self.children = []
 
@@ -172,6 +174,18 @@ class LocalSymbolTable(list):
         
         return symb
 
+    def get_external_var(self):
+        res = set()
+
+        for sym in self:
+            if isinstance(sym.stype, FunctionType):
+                continue
+            if sym.level != self.fsym:
+                res.insert(sym)
+
+        return res
+
+
     def __repr__(self):
         res = 'LocalSymbolTable:\n'
         for s in self:
@@ -182,16 +196,30 @@ class LocalSymbolTable(list):
         return [symb for symb in self if symb.stype not in barred_types]
 
     def instr_dot_repr(self):
-        res = "{" + self.fname 
+        res = "{" + self.fsym.name
         for s in self:
             res +=  '|{' + s.name + "|" + str(s.stype.name) + "}"
         return res + "}"
 
     def get_temp_variable(self):
 
-        tempname = "temp_" + str(self.temp_counter) + "_" + self.fname
+        tempname = "temp_" + str(self.temp_counter) + "_" + self.fsym.name
 
-        return Symbol(tempname, stype=standard_types["int"],level=self.fname)
+        return Symbol(tempname, stype=standard_types["int"],level=self.fsym, temp=True)
+
+
+    def _get_function_uses(self, exclude=[]):
+
+        uses = []
+
+        for symb in self:
+            if symb.level == self.fsym or \
+                symb.level in exclude or \
+                isinstance(symb.stype, FunctionType):
+                continue
+
+            uses.append(symb.level)
+        return uses
 
 
 class SymbolTable():
@@ -200,16 +228,30 @@ class SymbolTable():
         self.root = ir.local_symtab
 
         # list of all the symbol tables
-        self.symtab_list = []
+        self.symtab_dict = dict()
 
         # create the symbol table tree
         self.__gather_symtab(ir)
+
+        self.global_sym = self.root.fsym
+
+    def get_function_uses(self):
+
+        func_uses = dict()
+
+        for func, symtab in self.symtab_dict.items():
+
+            func_uses[func] = symtab._get_function_uses(exclude=self.global_sym)
+
+        return func_uses
+
+
 
 
     def show_graphviz(self):
         G = Digraph("Symbol Table")
 
-        for table in self.symtab_list:
+        for table in self.symtab_dict.values():
             G.node(str(id(table)), table.instr_dot_repr(), {"shape":"record"})
             for c in table.children:
                 G.edge(str(id(table)), str(id(c)))
@@ -221,13 +263,13 @@ class SymbolTable():
     def __gather_symtab(self, ir):
 
         local_symtab = ir.local_symtab
-        self.symtab_list.append(local_symtab)
+        self.symtab_dict[local_symtab.fsym] = local_symtab
         for c in ir.defs.children:
-
             local_symtab.children.append(c.body.local_symtab)
             self.__gather_symtab(c.body)
 
-
+    def get_symtab_dict(self):
+        return self.symtab_dict
 
 
 # IRNODE
@@ -243,6 +285,14 @@ class IRNode(object):
                 c.parent = self
 
         self.symtab = symtab
+
+    def get_uses(self):
+        return set()
+
+    def get_defs(self):
+        return set()
+
+
 
     def instr_dot_repr(self):
         res = str(self.__class__.__name__) + " "
@@ -270,6 +320,45 @@ class IRNode(object):
             rep = repr(node)
             res += '\t' + d + ': ' + join(['\t' + s for s in rep.split('\n')], '\n') + '\n'
         res += '}'
+        return res
+
+    
+    def constant_propagation(self):
+        # indexes of children which are constant var
+        if "children" not in dir(self):
+            return
+        indexs = []
+
+        # find the constant among children
+        for idx, c in enumerate(self.children):
+            if isinstance(c, Var):
+                if c.symbol.value is not None:
+                    # it is a constant variable
+                    indexs.append(idx)
+
+        # substitute constat children
+        for idx in indexs:
+            c = self.children[idx]
+            value = c.symbol.value
+            self.children[idx] = Const(parent=self, value=value)#, symb=c.symbol)
+
+
+    def _get_symbol_level(self):
+        
+        res = set()
+
+        if 'children' not in dir(self):
+            return res
+
+        for c in self.children:
+            # if is a symbol and not a function call and not a constant
+            if isinstance(c, Symbol) and \
+               not isinstance(c.stype, FunctionType) and\
+               c.value is None :
+                print("found " + c.name)
+                res.add(c.level)
+            elif isinstance(c, IRNode):
+                res.update(c._get_symbol_level())
         return res
 
     def navigate(self, action):
@@ -352,6 +441,16 @@ class Var(IRNode):
     def instr_dot_repr(self):
         return self.symbol.instr_dot_repr()
 
+    def _get_symbol_level(self):
+        res = set()
+        c = self.symbol
+        if isinstance(c, Symbol) and \
+           not isinstance(c.stype, FunctionType) and\
+           c.value is None :
+            print("found " + c.name)
+            res.add(c.level)
+        return res
+
 
 # EXPRESSIONS
 class Expr(IRNode):
@@ -363,6 +462,15 @@ class Expr(IRNode):
         if not self.destination_register:
             self.destination_register = Register(None, standard_types['register'](), self.symtab)
         return self.destination_register
+
+
+    def get_uses():
+        res = set()
+
+        for c in self.children:
+            if isinstance(c, Var):
+                res.insert(c.symbol)
+        return res
 
     def getOperator(self):
         return self.children[0]
@@ -377,6 +485,7 @@ class Expr(IRNode):
                 pass
         return uses
 
+
     def instr_dot_repr(self):
         return self.children[0]
 
@@ -387,7 +496,7 @@ class Expr(IRNode):
 class BinExpr(Expr):
     # to lower this we have to translate it with
     # assembly code
-    # var -> load statement LoadStat (symbol, sp/fp, dest -> [a register]) we have an infinite number
+    # var -> load statement LoadStatMIPS (symbol, sp/fp, dest -> [a register]) we have an infinite number
     # constant are ok
 
     # this will be turned into also a BinExpr
@@ -396,7 +505,7 @@ class BinExpr(Expr):
     # src1 , src2, destination
 
     # in order we have to replace the original statement
-    # so we use a StatList with LoadStat and a BinStat with register this time
+    # so we use a StatList with LoadStatMIPS and a BinStat with register this time
 
     def getOperands(self):
         return self.children[1:]
@@ -418,7 +527,7 @@ class BinExpr(Expr):
         try:
             if isinstance(self.children[1], Var):
                 parameter1 = Register(None, standard_types['register'](), self.symtab)
-                statement_list.append(LoadStat(parameter1, None, symbol=self.children[1], symtab=self.symtab))
+                statement_list.append(LoadStatMIPS(parameter1, None, symbol=self.children[1], symtab=self.symtab))
             elif isinstance(self.children[1], Const):
                 parameter1 = self.children[1]
             elif isinstance(self.children[1], BinExpr):
@@ -430,7 +539,7 @@ class BinExpr(Expr):
                 debug("Unrecognized token in the expression")
             if isinstance(self.children[2], Var):
                 parameter2 = Register(None, standard_types['register'](), self.symtab)
-                statement_list.append(LoadStat(parameter2, None, self.children[2], self.symtab))
+                statement_list.append(LoadStatMIPS(parameter2, None, self.children[2], self.symtab))
             elif isinstance(self.children[2], Const):
                 parameter2 = self.children[2]
             elif isinstance(self.children[2], BinExpr):
@@ -497,6 +606,7 @@ class CallExpr(Expr):
     def __init__(self, parent=None, function=None, parameters=None, symtab=None):
         self.parent = parent
         self.symbol = function
+        self.local_symtab = symtab
         if parameters:
             self.children = parameters[:]
         else:
@@ -506,6 +616,9 @@ class CallExpr(Expr):
         print("Hey i'm here")
         return "call " + self.symbol.instr_dot_repr()
 
+    def to_SSA(self):
+        return self
+        
 # STATEMENTS
 class Stat(IRNode):
     def setLabel(self, label):
@@ -553,7 +666,7 @@ class CallStat(Stat):
 
         # store $bp, ($sp)
         # destinazione valore
-        inst = StoreStat(None, standard_types['register'].get_sp_register(), self.symtab,
+        inst = StoreStatMIPS(None, standard_types['register'].get_sp_register(), self.symtab,
                          standard_types['register'].get_bp_register())
         instruction_list.append(inst)
         # $bp = $sp
@@ -565,7 +678,7 @@ class CallStat(Stat):
                        standard_types['register'].get_sp_register(), self.symtab)
         instruction_list.append(inst)
         # store $ra, 4($sp)   -- saving the return address
-        inst = StoreStat(None, standard_types['register'].get_sp_register(), self.symtab,
+        inst = StoreStatMIPS(None, standard_types['register'].get_sp_register(), self.symtab,
                          value=standard_types['register'].get_ra_register(), offset=4)
         instruction_list.append(inst)
         # jump function
@@ -576,11 +689,11 @@ class CallStat(Stat):
                        standard_types['register'].get_sp_register(), self.symtab)
         instruction_list.append(inst)
         # load $bp, ($sp)      -- restore the base pointer
-        inst = LoadStat(standard_types['register'].get_bp_register(), None,
+        inst = LoadStatMIPS(standard_types['register'].get_bp_register(), None,
                         standard_types['register'].get_sp_register(), self.symtab)
         instruction_list.append(inst)
         # load $ra, -4($sp)      -- restore the base pointer
-        inst = LoadStat(standard_types['register'].get_ra_register(), None,
+        inst = LoadStatMIPS(standard_types['register'].get_ra_register(), None,
                         standard_types['register'].get_sp_register(), self.symtab, -4)
         instruction_list.append(inst)
         # ...
@@ -590,6 +703,9 @@ class CallStat(Stat):
 
     def instr_dot_repr(self):
         return self.call.instr_dot_repr()
+    
+    def to_SSA(self):
+        return self
 
 
 
@@ -690,7 +806,12 @@ class AssignStat(Stat):
         self.symbol = target
         self.expr = expr
         self.expr.parent = self
-        self.symtab = symtab
+        self.local_symtab = symtab
+
+    def get_uses():
+        return self.expr.get_uses()
+    def get_defs():
+        return set(self.symbol)
 
     def instr_dot_repr(self):
         return self.expr.instr_dot_repr()
@@ -701,19 +822,35 @@ class AssignStat(Stat):
         except AttributeError:
             return []
 
+    def _get_symbol_level(self):
+        res = set()
+
+        for c in [self.symbol, self.expr]:
+            # if is a symbol and not a function call and not a constant
+            if isinstance(c, Symbol) and \
+               not isinstance(c.stype, FunctionType) and\
+               c.value is None :
+                print("found " + c.name)
+                res.add(c.level)
+            elif isinstance(c, IRNode):
+                res.update(c._get_symbol_level())
+        return res
+
+
+
     def lower(self):
         if isinstance(self.expr, Expr):
             register = self.expr.get_destination_register()
             self.expr.lower()
-            store = StoreStat(self.parent, self.symbol, self.symtab, register)
+            store = StoreStatMIPS(self.parent, self.symbol, self.symtab, register)
             res = StatList(self.parent, [self.expr, store], self.symtab)
             return self.parent.replace(self, res)
         elif isinstance(self.expr, Const):
-            store = StoreStat(self.parent, self.symbol, self.symtab, self.expr)
+            store = StoreStatMIPS(self.parent, self.symbol, self.symtab, self.expr)
             return self.parent.replace(self, store)
         elif isinstance(self.expr, Var):
-            load = LoadStat(None, None, self.expr.symbol, self.symtab)
-            store = StoreStat(self.parent, self.symbol, self.symtab, load.get_dest_register())
+            load = LoadStatMIPS(None, None, self.expr.symbol, self.symtab)
+            store = StoreStatMIPS(self.parent, self.symbol, self.symtab, load.get_dest_register())
             res = StatList(self.parent, [load, store], self.symtab)
             return self.parent.replace(self, res)
 
@@ -723,12 +860,11 @@ class AssignStat(Stat):
     def to_SSA(self):
 
         if isinstance(self.expr, Var) or isinstance(self.expr, Const):
-            return AssignStat(target=self.symbol, expr=self.expr, symtab=self.symtab)
+            return AssignStat(target=self.symbol, expr=self.expr, symtab=self.local_symtab)
 
-        SSA_list, expr_ssa = self.expr.to
-        _SSA()
+        SSA_list, expr_ssa = self.expr.to_SSA()
 
-        SSA_list.append(AssignStat(target=self.symbol, expr=expr_ssa, symtab=self.symtab))
+        SSA_list.append(AssignStat(target=self.symbol, expr=expr_ssa, symtab=self.local_symtab))
 
         return SSA_list
 
@@ -764,7 +900,7 @@ class EmptyStat(Stat):
         return []
 
 
-class StoreStat(Stat):
+class StoreStatMIPS(Stat):
     def __init__(self, parent=None, symbol=None, symtab=None, value=None, offset=0):
         self.parent = parent
         self.store_symbol = symbol
@@ -811,6 +947,32 @@ class BinStat(Stat):
 
 
 class LoadStat(Stat):
+    def __init__(self, vars=None, parent=None, symbol=None, symtab=None):
+        
+        if vars is None:
+            self.to_load = []
+        else:
+            self.to_load = vars
+
+        self.parent = parent
+        self.symtab = symtab
+
+    def add_var_to_load(self, var):
+        self.to_load.append(var)
+
+    def instr_dot_repr(self):
+
+        res = ""
+
+        for sym in self.to_load:
+            res += sym.instr_dot_repr() + ", "
+
+        return  "Load {" + res[:-2] + "}"
+
+
+
+
+class LoadStatMIPS(Stat):
     def __init__(self, register=None, parent=None, symbol=None, symtab=None, offset=0):
         self.offset = offset
         self.parent = parent
