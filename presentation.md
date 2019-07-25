@@ -60,15 +60,33 @@ The steps that the compiler performs are:
 
  - Syntax analysis
  - Constant propagation
- - IR into 3-address-form
  - CFG
+ - IR into 3-address-form
+ - Call Graph
  - Liveness
  - Register Allocation
  - Code Generation
 
+## Constant Propagation and Folding
+
+
+Perform constant folding and propagation on the IR Tree.
+
+
+## CFG
+
+
+## Call Graph
+
+
+## Liveness Analysis
+
+
+## Liveness: Load and Stores
 
 
 ## 3-Address-Form
+
 ```FORTRAN
 PROCEDURE marco;
 		VAR abc, ab, bc;
@@ -85,10 +103,10 @@ PROCEDURE marco;
 
 ![After.](images/after3way.pdf)
 
-## CFG
-
 
 ## Data Layout
+
+![](images/stack.pdf)
 
 
 ## Register Allocation
@@ -161,6 +179,9 @@ marco_139736320881104 :
 ## Code Generation: Function calls
 
 Callee saves the \$ra, \$fp and pushed the \$fp of the others functions. Also reserves space for local variables.
+
+![](images/callstack.pdf)
+
 
 # Take Home Concepts
 

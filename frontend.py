@@ -301,12 +301,16 @@ if __name__ == '__main__':
     # Build the syntactic tree/IR tree
     res = program()
 
+    print_dotty(res, "log.dot")
+
+    raw_input()
     res.navigate(constant_propagation)
 
+    res.navigate_postvisit(constant_folding)
     #debug("printing the result")
     #print '\n', res, '\n'
     print_dotty(res, "log.dot")
-
+    raw_input()
     if stop_inbetween:
         raw_input("Press any key to continue...")
 

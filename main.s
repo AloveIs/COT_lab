@@ -10,7 +10,7 @@
 # fill in function stack
 	move $fp, $sp
 	addi $sp,$sp, -8
-	j global_140578378816016
+	j global_139976577755344
 	# exiting the program
 	li	$v0, 10
 	syscall
@@ -18,51 +18,51 @@
 
 
 #####################################
-######    global
+######    square
 #####################################
-global_140578378816016 : 
+square_139976577757072 : 
 #************************************
 
-global_140578378817488 :
+square_139976577893008 :
+# x := 35
+	ori $8, $0, 35
+# storing x
+	lw $4, -0($fp)
+	sw $8, -0($4)
+	jr	$ra
+
+#####################################
+######    global
+#####################################
+global_139976577755344 : 
+#************************************
+
+global_139976577756816 :
 # loading x
 	lw $8, -0($fp)
 # input x
 	addi $v0 , $0 , 5
 	syscall
 	move $8, $v0
-global_140578378887056 :
-# temp_0_global := ( x leq 10 )
-	
-	ori $7, $0,10
-	addi $4 $7, 1
-	slt $8, $8, $4
-# BNEQZ temp_0_global
-	bnez $8, global_140578378937680
-	j global_140578378936464
-global_140578378936464 :
-# print x
-	ori $2, $0, 1
-	or $4, $0, $8
-	syscall
-# print a newline
-	addi $a0, $0, 0xA
-	addi $v0, $0, 0xB
-	syscall
-global_140578378936848 :
-# temp_1_global := ( x leq 25 )
+# squ := 9
+	ori $8, $0, 9
+# storing squ
+	sw $8, -4($fp)
+global_139976577842896 :
+# temp_0_global := ( x leq 25 )
 	
 	ori $7, $0,25
 	addi $4 $7, 1
-	slt $8, $8, $4
+	slt $9, $8, $4
 # storing x
 	sw $8, -0($fp)
-# BNEQZ temp_1_global
-	bnez $8, global_140578378937296
-	j global_140578378937104
-global_140578378937104 :
+# BNEQZ temp_0_global
+	bnez $9, global_139976577892560
+	j global_139976577843152
+global_139976577843152 :
 
 	jr	$ra
-global_140578378937296 :
+global_139976577892560 :
 # storing x
 	sw $8, -0($fp)
 # preamble, save variables and push $ra, $fp, and the other's functions's $sp
@@ -76,7 +76,7 @@ global_140578378937296 :
 	move $fp, $sp
 	addi $sp,$sp, -12
 # call the function
-	jal square_140578378883344# Restore environment
+	jal square_139976577757072# Restore environment
 
 #restore and shrink stack
 	move $sp, $fp
@@ -86,7 +86,7 @@ global_140578378937296 :
 
 # loading x
 	lw $8, -0($fp)
-global_140578378937424 :
+global_139976577892688 :
 # print x
 	ori $2, $0, 1
 	or $4, $0, $8
@@ -99,46 +99,4 @@ global_140578378937424 :
 	addi $8, $8, 1
 	ori $7, $0,1
 	
-	j	global_140578378936848
-global_140578378937680 :
-# print x
-	ori $2, $0, 1
-	or $4, $0, $8
-	syscall
-# print a newline
-	addi $a0, $0, 0xA
-	addi $v0, $0, 0xB
-	syscall
-# x := ( x plus 1 )
-	addi $8, $8, 1
-	ori $7, $0,1
-	
-	j	global_140578378887056
-
-#####################################
-######    square
-#####################################
-square_140578378883344 : 
-#************************************
-
-square_140578378937936 :
-# loading x
-	lw $4, -0($fp)
-	lw $8, -0($4)
-# x := ( x times 2 )
-	ori $4, $0, 2
-	mul $8, $8, $4
-	ori $7, $0,2
-	
-# storing x
-	lw $4, -0($fp)
-	sw $8, -0($4)
-# print x
-	ori $2, $0, 1
-	or $4, $0, $8
-	syscall
-# print a newline
-	addi $a0, $0, 0xA
-	addi $v0, $0, 0xB
-	syscall
-	jr	$ra
+	j	global_139976577842896

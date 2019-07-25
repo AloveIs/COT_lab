@@ -69,7 +69,7 @@ class Symbol(object):
         self.value = value  # if not None, it is a constant
         self.level = level
         self.temp = temp
-        self.address = None
+        self.address = dict()
         #debug("Created : " + self.name + " Value : " + str(self.value))
 
     # the way in which we can implement the printing facilities
@@ -293,7 +293,7 @@ class IRNode(object):
     def get_defs(self):
         return set()
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         return self.instr_dot_repr()
 
     def instr_dot_repr(self):
@@ -362,6 +362,28 @@ class IRNode(object):
             elif isinstance(c, IRNode):
                 res.update(c._get_symbol_level())
         return res
+
+
+    def navigate_postvisit(self, action):
+        # call action on the self node
+        attrs = set(
+            ['body', 'cond', 'value', 'thenpart', 'elsepart', 'symbol', 'call', 'step', 'expr', 'target', 'defs',
+             'global_symtab', 'local_symtab']) & set(dir(self))
+        if 'children' in dir(self) and len(self.children):
+            # print 'navigating children of', type(self), id(self), len(self.children)
+            for i in range(len(self.children)):
+                try:
+                    self.children[i].navigate_postvisit(action)
+                except Exception:
+                    pass
+        for d in attrs:
+            try:
+                getattr(self, d).navigate_postvisit(action)
+            except Exception:
+                pass
+
+        action(self)
+
 
     def navigate(self, action):
         # call action on the self node
@@ -436,6 +458,8 @@ class Var(IRNode):
         # name of the variable
         self.name = var
         self.symtab = symtab
+
+        self.address = dict()
 
     def collect_uses(self):
         return [self.symbol]
@@ -646,7 +670,7 @@ class CallExpr(Expr):
     def to_three_addr_form(self):
         return self
 
-    def generate_code(self):
+    def generate_code(self, fsym):
        
         calling_fn = self.symtab.fsym
 
@@ -815,7 +839,7 @@ class CallStat(Stat):
         lowered = StatList(self.parent, instruction_list, self.symtab)
         self.parent.replace(self, lowered)
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         return self.call.instr_dot_repr()
 
     def instr_dot_repr(self):
@@ -829,7 +853,7 @@ class NopStat(IRNode):
     def __init(self):
         self.name = None
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         return "\n"
 
     def get_uses(self):
@@ -962,12 +986,12 @@ class AssignStat(Stat):
         except AttributeError:
             return []
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         instr = "# " + self.instr_dot_repr() + "\n\t"
 
         expr = self.expr
         if isinstance(self.expr, Const):
-            instr += "ori $" + str(self.symbol.address) + ", $0, " + str(self.expr.value)
+            instr += "ori $" + str(self.symbol.address[fsym]) + ", $0, " + str(self.expr.value)
         if isinstance(self.expr, UnExpr):
 
             op = self.expr.children[0]
@@ -976,39 +1000,39 @@ class AssignStat(Stat):
 
             if isinstance(var, Var):
                 if op == "minus":
-                    instr += "sub $" + str(self.symbol.address) +", $0, $" + str(var.symbol.address)
+                    instr += "sub $" + str(self.symbol.address[fsym]) +", $0, $" + str(var.symbol.address[fsym])
                 elif op == "plus":
-                    instr += "add $" + str(self.symbol.address) +", $0, $" + str(var.symbol.address)
-                elif op == "odd":
-                    instr += "and $" + str(self.symbol.address) +", $"+ str(var.symbol.address) + ", 1"
+                    instr += "add $" + str(self.symbol.address[fsym]) +", $0, $" + str(var.symbol.address[fsym])
+                elif op == "oddsym":
+                    instr += "and $" + str(self.symbol.address[fsym]) +", $"+ str(var.symbol.address[fsym]) + ", 1"
             elif isinstance(var, Const):
                 if op == "minus":
                     instr += "ori $4, $0, " + str(var.value) 
                     instr += "\n\t"
-                    instr += "sub $" + str(self.symbol.address) +", $0, $4"
+                    instr += "sub $" + str(self.symbol.address[fsym]) +", $0, $4"
                 elif op == "plus":
                     instr += "ori $4, $0, " + str(var.value) 
                     instr += "\n\t"
-                    instr += "add $" + str(self.symbol.address) +", $0, $4"
-                elif op == "odd":
+                    instr += "add $" + str(self.symbol.address[fsym]) +", $0, $4"
+                elif op == "oddsym":
                     instr += "ori $4, $0, " + str(var.value)
                     instr += "\n\t" 
-                    instr += "and $4, $" + str(var.symbol.address) + ", 1"
+                    instr += "and $4, $" + str(var.symbol.address[fsym]) + ", 1"
 
         if isinstance(self.expr, BinExpr):
             # both variables
             if isinstance(expr.children[1], Var) and \
                 isinstance(expr.children[2], Var):
                 if expr.children[0] == 'times':
-                    instr += "mul $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address) 
+                    instr += "mul $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) 
                 if expr.children[0] == 'slash':
-                    instr += "div $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "div $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym])
                 if expr.children[0] == 'plus':
-                    instr += "add $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "add $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym])
                 if expr.children[0] == 'minus':
-                    instr += "sub $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address) 
+                    instr += "sub $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) 
                 if expr.children[0] == 'eql':
-                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym])
                     instr += "\n\t"
                     instr += "slti $5, $4, 1"
                     instr += "\n\t"
@@ -1016,27 +1040,27 @@ class AssignStat(Stat):
                     instr += "\n\t"
                     instr += "slt $4, $6, $4"
                     instr += "\n\t"
-                    instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                    instr += "and $" + str(self.symbol.address[fsym])  + ", $4, $5"
                 if expr.children[0] == 'neq':
-                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym])
                     instr += "\n\t"
                     instr += "slti $5, $4, 0"
                     instr += "\n\t"
                     instr += "slt $4, $0, $4"
                     instr += "\n\t"
-                    instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                    instr += "or $" + str(self.symbol.address[fsym])  + ", $4, $5"
                 if expr.children[0] == 'lss':
-                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym])
                 if expr.children[0] == 'leq':
-                    instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address) + ", 1"
+                    instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address[fsym]) + ", 1"
                     instr += "\n\t"
-                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $4"
+                    instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $4"
                 if expr.children[0] == 'gtr':
-                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $" +str(expr.children[1].symbol.address) 
+                    instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) 
                 if expr.children[0] == 'geq':
-                    instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address) + ", 1"
+                    instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address[fsym]) + ", 1"
                     instr += "\n\t"
-                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $4"
+                    instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) +", $4"
                     
             # one immediate
             elif not(isinstance(expr.children[1], Const) and \
@@ -1047,29 +1071,29 @@ class AssignStat(Stat):
                 if expr.children[0] == 'times':
                     instr += "ori $4, $0, " + str(immediate.value) 
                     instr += "\n\t"
-                    instr += "mul $" + str(self.symbol.address) +", $" + str(reg.symbol.address) + ", $4"
+                    instr += "mul $" + str(self.symbol.address[fsym]) +", $" + str(reg.symbol.address[fsym]) + ", $4"
                 if expr.children[0] == 'slash':
                     instr += "ori $4, $0, " + str(immediate.value) 
                     instr += "\n\t"
                     if immediate == expr.children[1]:
-                        instr += "div $" + str(self.symbol.address) +", $4, $" + str(expr.children[2].symbol.address)
+                        instr += "div $" + str(self.symbol.address[fsym]) +", $4, $" + str(expr.children[2].symbol.address[fsym])
                     else:
-                        instr += "div $" + str(self.symbol.address)  + ", $" + str(expr.children[2].symbol.address) +", $4"
+                        instr += "div $" + str(self.symbol.address[fsym])  + ", $" + str(expr.children[2].symbol.address[fsym]) +", $4"
                 if expr.children[0] == 'plus':
-                    instr += "addi $" + str(self.symbol.address) +", $" + str(reg.symbol.address) + ", " + str(immediate.value)
+                    instr += "addi $" + str(self.symbol.address[fsym]) +", $" + str(reg.symbol.address[fsym]) + ", " + str(immediate.value)
                 if expr.children[0] == 'minus':
                     instr += "ori $4, $0," + str(immediate.value) 
                     instr += "\n\t"
                     if immediate == expr.children[1]:
-                        instr += "sub $" + str(self.symbol.address) +", $4, $" + str(expr.children[2].symbol.address)
+                        instr += "sub $" + str(self.symbol.address[fsym]) +", $4, $" + str(expr.children[2].symbol.address[fsym])
                     else:
-                        instr += "sub $" + str(self.symbol.address)  + ", $" + str(expr.children[2].symbol.address) +", $4"
+                        instr += "sub $" + str(self.symbol.address[fsym])  + ", $" + str(expr.children[1].symbol.address[fsym]) +", $4"
 
                 if immediate == expr.children[1]:
                     instr += "\n\tori $7, $0," + str(immediate.value)
                     instr += "\n\t"   
                     if expr.children[0] == 'eql':
-                        instr += "sub $4 " + ", $7" +", $" +str(expr.children[2].symbol.address)
+                        instr += "sub $4 " + ", $7" +", $" +str(expr.children[2].symbol.address[fsym])
                         instr += "\n\t"
                         instr += "slti $5, $4, 1"
                         instr += "\n\t"
@@ -1077,32 +1101,32 @@ class AssignStat(Stat):
                         instr += "\n\t"
                         instr += "slt $4, $6, $4"
                         instr += "\n\t"
-                        instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                        instr += "and $" + str(self.symbol.address[fsym])  + ", $4, $5"
                     if expr.children[0] == 'neq':
-                        instr += "sub $4 " +", " + "$7" +", $" +str(expr.children[2].symbol.address)
+                        instr += "sub $4 " +", " + "$7" +", $" +str(expr.children[2].symbol.address[fsym])
                         instr += "\n\t"
                         instr += "slti $5, $4, 0"
                         instr += "\n\t"
                         instr += "slt $4, $0, $4"
                         instr += "\n\t"
-                        instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                        instr += "or $" + str(self.symbol.address[fsym])  + ", $4, $5"
                     if expr.children[0] == 'lss':
-                        instr += "slt $" + str(self.symbol.address) +", " + "$7" +", $" +str(expr.children[2].symbol.address)
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", " + "$7" +", $" +str(expr.children[2].symbol.address[fsym])
                     if expr.children[0] == 'leq':
-                        instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address) + ", 1"
+                        instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address[fsym]) + ", 1"
                         instr += "\n\t"
-                        instr += "slt $" + str(self.symbol.address) +", " + "$7" +", $4"
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", " + "$7" +", $4"
                     if expr.children[0] == 'gtr':
-                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", " + "$7" 
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) +", " + "$7" 
                     if expr.children[0] == 'geq':
                         instr += "addi " + "$4" +", " + "$7" + ", 1"
                         instr += "\n\t"
-                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $4"
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[2].symbol.address[fsym]) +", $4"
                 else:
                     instr += "\n\tori $7, $0," + str(immediate.value) 
                     instr += "\n\t"
                     if expr.children[0] == 'eql':
-                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address[fsym]) +", " +"$7"
                         instr += "\n\t"
                         instr += "slti $5, $4, 1"
                         instr += "\n\t"
@@ -1110,28 +1134,28 @@ class AssignStat(Stat):
                         instr += "\n\t"
                         instr += "slti $4, $6, $4"
                         instr += "\n\t"
-                        instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                        instr += "and $" + str(self.symbol.address[fsym])  + ", $4, $5"
                     if expr.children[0] == 'neq':
-                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address[fsym]) +", " +"$7"
                         instr += "\n\t"
                         instr += "slti $5, $4, 0"
                         instr += "\n\t"
                         instr += "slt $4, $0, $4"
                         instr += "\n\t"
-                        instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                        instr += "or $" + str(self.symbol.address[fsym])  + ", $4, $5"
                     if expr.children[0] == 'lss':
-                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", " +"$7"
                     if expr.children[0] == 'leq':
                         instr += "addi " + "$4" +" " +"$7" + ", 1"
                         instr += "\n\t"
-                        print("############ " + self.symbol.name  + str(self.symbol.address))
-                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $4"
+                        print("############ " + self.symbol.name  + str(self.symbol.address[fsym]))
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", $" +str(expr.children[1].symbol.address[fsym]) +", $4"
                     if expr.children[0] == 'gtr':
-                        instr += "slt $" + str(self.symbol.address) +", " +"$7" +", $" +str(expr.children[1].symbol.address) 
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", " +"$7" +", $" +str(expr.children[1].symbol.address[fsym]) 
                     if expr.children[0] == 'geq':
-                        instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address) + ", 1"
+                        instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address[fsym]) + ", 1"
                         instr += "\n\t"
-                        instr += "slt $" + str(self.symbol.address) +", " +"$7" +", $4"
+                        instr += "slt $" + str(self.symbol.address[fsym]) +", " +"$7" +", $4"
             else:
                 instr +="< Errore - no operation defined"
         return instr + "\n"
@@ -1204,10 +1228,10 @@ class BranchStat(Stat):
     def set_on_false(self, BB):
         self.on_false = BB
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         res = "# " + self.instr_dot_repr() + "\n"
 
-        res += "\tbnez $" + str(self.cond_var.address) + ", " + self.on_true.lbl_begin + "\n"
+        res += "\tbnez $" + str(self.cond_var.address[fsym]) + ", " + self.on_true.lbl_begin + "\n"
         res += "\tj " + self.on_false.lbl_begin + "\n"
 
         return res
@@ -1310,7 +1334,7 @@ class StoreStat(Stat):
         return  "Store [" + res[:-2] + "]"
 
 
-    def generate_code(self):
+    def generate_code(self, fsym):
 
         code = ""
 
@@ -1326,7 +1350,7 @@ class StoreStat(Stat):
 
                 idx = self.fsym.stack.index(sym)
 
-                code +="\tsw $" + str(sym.address) + ", -" + str(idx*4) + "($fp)\n"
+                code +="\tsw $" + str(sym.address[fsym]) + ", -" + str(idx*4) + "($fp)\n"
 
             else:
                 # find the index on the stack of the parent function
@@ -1335,7 +1359,7 @@ class StoreStat(Stat):
                 fn_idx = self.fsym.stack.index(sym.level)
                 code +="\tlw $4, -" + str(fn_idx*4) + "($fp)\n"
                 idx = sym.level.stack.index(sym)
-                code +="\tsw $" + str(sym.address) + ", -" + str(idx*4) + "($4)\n"
+                code +="\tsw $" + str(sym.address[fsym]) + ", -" + str(idx*4) + "($4)\n"
 
         return code
 
@@ -1355,7 +1379,7 @@ class LoadStat(Stat):
     def add_var_to_load(self, var):
         self.to_load.update(var)
 
-    def generate_code(self):
+    def generate_code(self, fsym):
 
         code = ""
 
@@ -1371,7 +1395,7 @@ class LoadStat(Stat):
 
                 idx = self.fsym.stack.index(sym)
 
-                code +="\tlw $" + str(sym.address) + ", -" + str(idx*4) + "($fp)\n"
+                code +="\tlw $" + str(sym.address[fsym]) + ", -" + str(idx*4) + "($fp)\n"
 
             else:
                 # find the index on the stack of the parent function
@@ -1380,7 +1404,7 @@ class LoadStat(Stat):
                 fn_idx = self.fsym.stack.index(sym.level)
                 code +="\tlw $4, -" + str(fn_idx*4) + "($fp)\n"
                 idx = sym.level.stack.index(sym)
-                code +="\tlw $" + str(sym.address) + ", -" + str(idx*4) + "($4)\n"
+                code +="\tlw $" + str(sym.address[fsym]) + ", -" + str(idx*4) + "($4)\n"
 
         return code
 
@@ -1510,11 +1534,11 @@ class PrintStat(Stat):
     def collect_uses(self):
         return [self.symbol]
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         res = "# " + self.instr_dot_repr() + "\n"
 
         res += "\tori $2, $0, 1\n"
-        res += "\tor $4, $0, $" + str(self.symbol.address) +  "\n"
+        res += "\tor $4, $0, $" + str(self.symbol.address[fsym]) +  "\n"
 
         res += "\tsyscall\n"
         # print a newline
@@ -1559,12 +1583,12 @@ class InputStat(Stat):
         return "input " + self.symbol.instr_dot_repr() 
 
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         res = "# " + self.instr_dot_repr() + "\n"
 
         res += "\taddi $v0 , $0 , 5\n"
         res += "\tsyscall\n"
-        res += "\tmove $" + str(self.symbol.address) +  ", $v0\n"
+        res += "\tmove $" + str(self.symbol.address[fsym]) +  ", $v0\n"
 
         return res
   

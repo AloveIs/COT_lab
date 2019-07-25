@@ -76,20 +76,11 @@ __test_program = '''
 	PROCEDURE square;
 	VAR gian, maria;
 	BEGIN
-	   x := x * 2;
-	   ! x
+	   x :=  35
 	END;
 	BEGIN
-	   	? x ;
-
-	   	WHILE x <= 10 DO
-	   	BEGIN
-		! x ;
-	   	x := x + 1
-	   	END;
-
-	   	! x;
-	   	
+	   	? x ;	  
+	   	squ := 2* 3 + 5  - (12 / 6) ; 	
 	   	WHILE x <= 25 DO
 	   	BEGIN
 	   	call square;

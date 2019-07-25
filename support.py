@@ -105,6 +105,73 @@ def constant_propagation(node):
         pass  # lowering not yet implemented for this class
 
 
+def resolve_bin_expr(node):
+    from ir import Const
+    
+    value = 0
+
+    op1 = node.children[1]
+    op2 = node.children[2]
+
+
+
+    if node.children[0] == 'times':
+        value = int(int(op1.value) * int(op2.value))
+    if node.children[0] == 'slash':
+        value = int(int(op1.value) / int(op2.value))
+    if node.children[0] == 'plus':
+        value = int(int(op1.value) + int(op2.value))
+    if node.children[0] == 'minus':
+        value = int(int(op1.value) - int(op2.value))
+    if node.children[0] == 'eql':
+        value = int(int(op1.value) == int(op2.value))
+    if node.children[0] == 'neq':
+        value = int(int(op1.value) != int(op2.value))
+    if node.children[0] == 'lss':
+        value = int(int(op1.value) < int(op2.value))
+    if node.children[0] == 'leq':
+        value = int(int(op1.value) <= int(op2.value))
+    if node.children[0] == 'gtr':
+        value = int(int(op1.value) > int(op2.value))
+    if node.children[0] == 'geq':
+        value = int(int(op1.value) >= int(op2.value))
+
+    return Const(value=value, parent=node.parent)
+
+def resolve_un_expr(node):
+    from ir import Const
+        
+    value = 0
+
+    op1 = node.children[1]
+
+    if node.children[0] == 'plus':
+        value = int(op1.value)
+    if node.children[0] == 'minus':
+        value = - int(op1.value)
+    if node.children[0] == 'oddsym':
+        value = int((int(op1.value) % 2) == 1)
+
+    return Const(value=value, parent=node.parent)
+
+
+
+
+def constant_folding(node):
+    from ir import BinExpr, UnExpr, Const
+    try:
+        if isinstance(node, BinExpr):
+            if isinstance(node.children[1], Const) and \
+                isinstance(node.children[2], Const):
+                node.parent.replace(node, resolve_bin_expr(node))
+        if isinstance(node, UnExpr):
+            if isinstance(node.children[1], Const):
+                node.parent.replace(node, resolve_un_expr(node))
+    except Exception, e:
+        print 'Cannot Perform Constat Folding', type(node), e
+        pass  # lowering not yet implemented for this class
+
+
 
 
 

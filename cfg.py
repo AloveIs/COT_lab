@@ -481,7 +481,7 @@ class BasicBlock(object):
             self.instrs.append(NopStat)
 
 
-    def generate_code(self):
+    def generate_code(self, fsym):
         self.visited = True
 
         bb_code = ""
@@ -490,7 +490,7 @@ class BasicBlock(object):
 
 
         for inst in self.instrs:
-            bb_code += inst.generate_code()
+            bb_code += inst.generate_code(fsym)
 
         if len(self.children.keys()) >= 1:
             for child in self.children.values():
@@ -498,7 +498,7 @@ class BasicBlock(object):
                     if child.visited:
                         bb_code += "\t" + "j\t" + self.children.values()[0].lbl_begin + "\n" 
                     else:
-                        bb_code += child.generate_code()
+                        bb_code += child.generate_code(fsym)
         
         if len(self.children.keys()) == 1 and self.children.values()[0] is None: 
             # add return
@@ -698,7 +698,7 @@ class CFG(list):
                 "\n#####################################\n" + fsym.name + "_" + str(id(fsym))  + " : \n" \
                     + "#************************************\n\n"
 
-            body += self.cfgs[fsym].generate_code()
+            body += self.cfgs[fsym].generate_code(fsym)
             # create code from cfg
 
 

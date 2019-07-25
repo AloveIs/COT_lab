@@ -54,8 +54,9 @@ colors = {
 
 
 class ColorNode:
-    def __init__(self, symbol=None):
+    def __init__(self, symbol=None, fsym=None):
 
+        self.fsym = fsym
         self.symbol = symbol
         self.color = None
 
@@ -66,8 +67,8 @@ class ColorNode:
 
     def set_color(self, color):
         self.color = color
-        self.symbol.address = color + 8
-        print("For "  + self.symbol.name + " the register is " + str(self.symbol.address))
+        self.symbol.address[self.fsym] = color + 8
+        print("For "  + self.symbol.name + " the register is " + str(self.symbol.address[self.fsym]))
 
 
 
@@ -90,7 +91,7 @@ class ColorGraph:
     def __create_graph(self):
         # create the nodes
         for var in self.variables:
-            self.nodes[var] = ColorNode(var)
+            self.nodes[var] = ColorNode(symbol=var,fsym=self.fsym)
 
         # create connections
         for var in self.variables:
