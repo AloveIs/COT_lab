@@ -1,9 +1,0 @@
-digraph cubeCFG139736917511504 {
-	139736917511504 [label=cube color=orange shape=house style=filled]
-	0 [label="End cube" color=red shape=house style=filled]
-	139736917511504 -> 139736917540432
-	139736917540432 [label="{call marco}" shape=record]
-	139736917594192 [label="{dani := ( 2 times 3 )|dani := 2}" shape=record]
-	139736917594192 -> 0
-	139736917540432 -> 139736917594192 [label=next]
-}

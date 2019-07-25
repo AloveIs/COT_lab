@@ -70,7 +70,7 @@ class Symbol(object):
         self.level = level
         self.temp = temp
         self.address = None
-        debug("Created : " + self.name + " Value : " + str(self.value))
+        #debug("Created : " + self.name + " Value : " + str(self.value))
 
     # the way in which we can implement the printing facilities
 
@@ -181,7 +181,7 @@ class LocalSymbolTable(list):
             if isinstance(sym.stype, FunctionType):
                 continue
             if sym.level != self.fsym:
-                res.insert(sym)
+                res.add(sym)
 
         return res
 
@@ -204,9 +204,10 @@ class LocalSymbolTable(list):
     def get_temp_variable(self):
 
         tempname = "temp_" + str(self.temp_counter) + "_" + self.fsym.name
+        self.temp_counter += 1
 
-        return Symbol(tempname, stype=standard_types["int"],level=self.fsym, temp=True)
-
+        sym = Symbol(tempname, stype=standard_types["int"],level=self.fsym, temp=True)
+        return Var(var=sym, symtab=self)
 
     def _get_function_uses(self, exclude=[]):
 
@@ -292,7 +293,8 @@ class IRNode(object):
     def get_defs(self):
         return set()
 
-
+    def generate_code(self):
+        return self.instr_dot_repr()
 
     def instr_dot_repr(self):
         res = str(self.__class__.__name__) + " "
@@ -397,7 +399,7 @@ class IRNode(object):
                 pass
         return False
 
-    def to_SSA(self):
+    def to_three_addr_form(self):
         return self
 
 
@@ -464,12 +466,12 @@ class Expr(IRNode):
         return self.destination_register
 
 
-    def get_uses():
+    def get_uses(self):
         res = set()
 
         for c in self.children:
             if isinstance(c, Var):
-                res.insert(c.symbol)
+                res.add(c.symbol)
         return res
 
     def getOperator(self):
@@ -489,7 +491,7 @@ class Expr(IRNode):
     def instr_dot_repr(self):
         return self.children[0]
 
-    def to_SSA(self):
+    def to_three_addr_form(self):
         pass
 
 
@@ -516,6 +518,8 @@ class BinExpr(Expr):
         op1 = self.children[1].instr_dot_repr()
         op2 = self.children[2].instr_dot_repr()
         return "( " + op1 + operator + op2 + " )"
+
+
 
     def lower(self):
         # debug("calling lower on " + str(self))
@@ -559,7 +563,7 @@ class BinExpr(Expr):
         return self.parent.replace(self, StatList(self.parent, statement_list, self.symtab))
 
 
-    def to_SSA(self):
+    def to_three_addr_form(self):
 
         op = self.children[0]
         op1 = self.children[1]
@@ -576,16 +580,16 @@ class BinExpr(Expr):
         if not(isinstance(op1, Var) or isinstance(op1, Const)):
             new_op1 = self.symtab.get_temp_variable()
 
-            previous_ssa_list1, new_exp1 = op1.to_SSA()
+            previous_ssa_list1, new_exp1 = op1.to_three_addr_form()
             res.extend(previous_ssa_list1)
-            res.append(AssignStat(target=new_op1, expr=new_exp1, symtab=self.symtab))
+            res.append(AssignStat(target=new_op1.symbol, expr=new_exp1, symtab=self.symtab))
 
 
         if not(isinstance(op2, Var) or isinstance(op2, Const)):
             new_op2 = self.symtab.get_temp_variable()
 
-            previous_ssa_list2, new_exp2 = op2.to_SSA()
-            res.append(AssignStat(target=new_op21, expr=new_exp2, symtab=self.symtab))
+            previous_ssa_list2, new_exp2 = op2.to_three_addr_form()
+            res.append(AssignStat(target=new_op2.symbol, expr=new_exp2, symtab=self.symtab))
 
         newBinExpr = BinExpr(children=[op, new_op1, new_op2], symtab=self.symtab)
 
@@ -602,22 +606,132 @@ class UnExpr(Expr):
         return "(" + operand + " " + arg + ")"
 
 
+    def to_three_addr_form(self):
+        op = self.children[0]
+        op1 = self.children[1]
+
+        new_op1 = op1
+
+        # ssa list of the instructions needed to perform the 
+        # original expression
+
+        res = []
+
+        if not(isinstance(op1, Var) or isinstance(op1, Const)):
+            new_op1 = self.symtab.get_temp_variable()
+
+            previous_ssa_list1, new_exp1 = op1.to_three_addr_form()
+            res.extend(previous_ssa_list1)
+            res.append(AssignStat(target=new_op1.symbol, expr=new_exp1, symtab=self.symtab))
+
+        newBinExpr = UnExpr(children=[op, new_op1], symtab=self.symtab)
+
+        return (res, newBinExpr)
+
+
+
 class CallExpr(Expr):
     def __init__(self, parent=None, function=None, parameters=None, symtab=None):
         self.parent = parent
         self.symbol = function
-        self.local_symtab = symtab
+        self.symtab = symtab
         if parameters:
             self.children = parameters[:]
         else:
             self.children = []
 
     def instr_dot_repr(self):
-        print("Hey i'm here")
         return "call " + self.symbol.instr_dot_repr()
 
-    def to_SSA(self):
+    def to_three_addr_form(self):
         return self
+
+    def generate_code(self):
+       
+        calling_fn = self.symtab.fsym
+
+        called_fn = self.symbol
+
+        called_fn_stack = called_fn.stack
+        calling_fn_stack = calling_fn.stack
+
+        res = "# preamble, save variables and push $ra, $fp, and the other's functions's $sp\n"
+
+
+
+        res += """
+# save $ra $fp  on stack
+\taddi $sp, $sp, -8
+\tsw   $fp, 8($sp)
+\tsw   $ra, 4($sp)
+# fill in function stack
+"""
+
+
+
+        for idx, sym in enumerate(called_fn_stack):
+            if isinstance(sym.stype, FunctionType):
+                if sym == calling_fn:
+                    res += "\t" + "sw $fp, -" + str(idx*4) + "($sp)" + "\n"
+                else:
+                    idx_on_callee_stack = calling_fn_stack.index(sym)
+                    res += "\t" + "lw $4, -" + str(idx_on_callee_stack*4) + "($fp)" + "\n"
+                    res += "\t" + "sw $4, -" + str(idx*4) + "($sp)" + "\n"
+
+        res += "\t" + "move $fp, $sp" + "\n"
+        res += "\taddi $sp,$sp, -" + str(4*len(called_fn_stack)) + "\n"
+
+        """
+        \taddi $sp $sp -12
+        \tsw   $ra  -4($fp)
+        \tsw   $a0  -8($fp)
+        \tsw   $s0 -12($fp)\n"""
+        """ push
+        sub $sp,$sp,4
+        sw $t2,($sp)
+        """
+
+        """ pop
+        lw $t2,($sp)
+        addiu $sp,$sp,4
+        """
+
+        """
+        #save $ra $s0, $a0 on stack
+        addi $sp $sp -4
+        sw   $fp 0($sp)
+        move $fp $sp
+        addi $sp $sp -12
+        sw   $ra  -4($fp)
+        sw   $a0  -8($fp)
+        sw   $s0 -12($fp)
+
+        ...
+
+        #restore and shrink stack
+        lw $s0 -12($fp)
+        lw $ra  -4($fp)
+        lw $fp   0($fp)
+        addi $sp $sp 16
+
+        jr $ra
+        """
+        
+        res += "# call the function\n"
+        res += "\tjal " + self.symbol.name + "_" + str(id(self.symbol))
+        res += "# Restore environment\n"
+
+
+        res += """
+#restore and shrink stack
+\tmove $sp, $fp
+\tlw $ra, 4($sp)
+\tlw $fp,  8($sp)
+\taddi $sp, $sp, 8
+\n"""
+
+        return res
+
         
 # STATEMENTS
 class Stat(IRNode):
@@ -701,12 +815,37 @@ class CallStat(Stat):
         lowered = StatList(self.parent, instruction_list, self.symtab)
         self.parent.replace(self, lowered)
 
+    def generate_code(self):
+        return self.call.instr_dot_repr()
+
     def instr_dot_repr(self):
         return self.call.instr_dot_repr()
     
-    def to_SSA(self):
+    def to_three_addr_form(self):
         return self
 
+
+class NopStat(IRNode):
+    def __init(self):
+        self.name = None
+
+    def generate_code(self):
+        return "\n"
+
+    def get_uses(self):
+        return set()
+
+    def get_defs(self):
+        return set()
+
+    def get_function_call_uses(self):
+        return ([],[])
+
+    def instr_dot_repr(self):
+        return "NOP"
+    
+    def to_three_addr_form(self):
+        return self
 
 
 class IfStat(Stat):
@@ -807,11 +946,12 @@ class AssignStat(Stat):
         self.expr = expr
         self.expr.parent = self
         self.local_symtab = symtab
+        self.symtab = self.local_symtab
 
-    def get_uses():
+    def get_uses(self):
         return self.expr.get_uses()
-    def get_defs():
-        return set(self.symbol)
+    def get_defs(self):
+        return set([self.symbol])
 
     def instr_dot_repr(self):
         return self.expr.instr_dot_repr()
@@ -821,6 +961,183 @@ class AssignStat(Stat):
             return self.expr.collect_uses()
         except AttributeError:
             return []
+
+    def generate_code(self):
+        instr = "# " + self.instr_dot_repr() + "\n\t"
+
+        expr = self.expr
+        if isinstance(self.expr, Const):
+            instr += "ori $" + str(self.symbol.address) + ", $0, " + str(self.expr.value)
+        if isinstance(self.expr, UnExpr):
+
+            op = self.expr.children[0]
+            var = self.expr.children[1]
+            instr += "\t" + "\n"
+
+            if isinstance(var, Var):
+                if op == "minus":
+                    instr += "sub $" + str(self.symbol.address) +", $0, $" + str(var.symbol.address)
+                elif op == "plus":
+                    instr += "add $" + str(self.symbol.address) +", $0, $" + str(var.symbol.address)
+                elif op == "odd":
+                    instr += "and $" + str(self.symbol.address) +", $"+ str(var.symbol.address) + ", 1"
+            elif isinstance(var, Const):
+                if op == "minus":
+                    instr += "ori $4, $0, " + str(var.value) 
+                    instr += "\n\t"
+                    instr += "sub $" + str(self.symbol.address) +", $0, $4"
+                elif op == "plus":
+                    instr += "ori $4, $0, " + str(var.value) 
+                    instr += "\n\t"
+                    instr += "add $" + str(self.symbol.address) +", $0, $4"
+                elif op == "odd":
+                    instr += "ori $4, $0, " + str(var.value)
+                    instr += "\n\t" 
+                    instr += "and $4, $" + str(var.symbol.address) + ", 1"
+
+        if isinstance(self.expr, BinExpr):
+            # both variables
+            if isinstance(expr.children[1], Var) and \
+                isinstance(expr.children[2], Var):
+                if expr.children[0] == 'times':
+                    instr += "mul $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address) 
+                if expr.children[0] == 'slash':
+                    instr += "div $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                if expr.children[0] == 'plus':
+                    instr += "add $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                if expr.children[0] == 'minus':
+                    instr += "sub $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address) 
+                if expr.children[0] == 'eql':
+                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "\n\t"
+                    instr += "slti $5, $4, 1"
+                    instr += "\n\t"
+                    instr += "addi $6, $0, -1"
+                    instr += "\n\t"
+                    instr += "slt $4, $6, $4"
+                    instr += "\n\t"
+                    instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                if expr.children[0] == 'neq':
+                    instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                    instr += "\n\t"
+                    instr += "slti $5, $4, 0"
+                    instr += "\n\t"
+                    instr += "slt $4, $0, $4"
+                    instr += "\n\t"
+                    instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                if expr.children[0] == 'lss':
+                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $" +str(expr.children[2].symbol.address)
+                if expr.children[0] == 'leq':
+                    instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address) + ", 1"
+                    instr += "\n\t"
+                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $4"
+                if expr.children[0] == 'gtr':
+                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $" +str(expr.children[1].symbol.address) 
+                if expr.children[0] == 'geq':
+                    instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address) + ", 1"
+                    instr += "\n\t"
+                    instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $4"
+                    
+            # one immediate
+            elif not(isinstance(expr.children[1], Const) and \
+                isinstance(expr.children[2], Const)):
+                immediate = expr.children[1] if isinstance(expr.children[1], Const) else expr.children[2]
+                reg = expr.children[2] if isinstance(expr.children[1], Const) else expr.children[1]
+
+                if expr.children[0] == 'times':
+                    instr += "ori $4, $0, " + str(immediate.value) 
+                    instr += "\n\t"
+                    instr += "mul $" + str(self.symbol.address) +", $" + str(reg.symbol.address) + ", $4"
+                if expr.children[0] == 'slash':
+                    instr += "ori $4, $0, " + str(immediate.value) 
+                    instr += "\n\t"
+                    if immediate == expr.children[1]:
+                        instr += "div $" + str(self.symbol.address) +", $4, $" + str(expr.children[2].symbol.address)
+                    else:
+                        instr += "div $" + str(self.symbol.address)  + ", $" + str(expr.children[2].symbol.address) +", $4"
+                if expr.children[0] == 'plus':
+                    instr += "addi $" + str(self.symbol.address) +", $" + str(reg.symbol.address) + ", " + str(immediate.value)
+                if expr.children[0] == 'minus':
+                    instr += "ori $4, $0," + str(immediate.value) 
+                    instr += "\n\t"
+                    if immediate == expr.children[1]:
+                        instr += "sub $" + str(self.symbol.address) +", $4, $" + str(expr.children[2].symbol.address)
+                    else:
+                        instr += "sub $" + str(self.symbol.address)  + ", $" + str(expr.children[2].symbol.address) +", $4"
+
+                if immediate == expr.children[1]:
+                    instr += "\n\tori $7, $0," + str(immediate.value)
+                    instr += "\n\t"   
+                    if expr.children[0] == 'eql':
+                        instr += "sub $4 " + ", $7" +", $" +str(expr.children[2].symbol.address)
+                        instr += "\n\t"
+                        instr += "slti $5, $4, 1"
+                        instr += "\n\t"
+                        instr += "subi $6, $0, 1"
+                        instr += "\n\t"
+                        instr += "slt $4, $6, $4"
+                        instr += "\n\t"
+                        instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                    if expr.children[0] == 'neq':
+                        instr += "sub $4 " +", " + "$7" +", $" +str(expr.children[2].symbol.address)
+                        instr += "\n\t"
+                        instr += "slti $5, $4, 0"
+                        instr += "\n\t"
+                        instr += "slt $4, $0, $4"
+                        instr += "\n\t"
+                        instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                    if expr.children[0] == 'lss':
+                        instr += "slt $" + str(self.symbol.address) +", " + "$7" +", $" +str(expr.children[2].symbol.address)
+                    if expr.children[0] == 'leq':
+                        instr += "addi " + "$4" +" $" +str(expr.children[2].symbol.address) + ", 1"
+                        instr += "\n\t"
+                        instr += "slt $" + str(self.symbol.address) +", " + "$7" +", $4"
+                    if expr.children[0] == 'gtr':
+                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", " + "$7" 
+                    if expr.children[0] == 'geq':
+                        instr += "addi " + "$4" +", " + "$7" + ", 1"
+                        instr += "\n\t"
+                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[2].symbol.address) +", $4"
+                else:
+                    instr += "\n\tori $7, $0," + str(immediate.value) 
+                    instr += "\n\t"
+                    if expr.children[0] == 'eql':
+                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                        instr += "\n\t"
+                        instr += "slti $5, $4, 1"
+                        instr += "\n\t"
+                        instr += "addi $6, $0, -1"
+                        instr += "\n\t"
+                        instr += "slti $4, $6, $4"
+                        instr += "\n\t"
+                        instr += "and $" + str(self.symbol.address)  + ", $4, $5"
+                    if expr.children[0] == 'neq':
+                        instr += "sub $4 " +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                        instr += "\n\t"
+                        instr += "slti $5, $4, 0"
+                        instr += "\n\t"
+                        instr += "slt $4, $0, $4"
+                        instr += "\n\t"
+                        instr += "or $" + str(self.symbol.address)  + ", $4, $5"
+                    if expr.children[0] == 'lss':
+                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", " +"$7"
+                    if expr.children[0] == 'leq':
+                        instr += "addi " + "$4" +" " +"$7" + ", 1"
+                        instr += "\n\t"
+                        print("############ " + self.symbol.name  + str(self.symbol.address))
+                        instr += "slt $" + str(self.symbol.address) +", $" +str(expr.children[1].symbol.address) +", $4"
+                    if expr.children[0] == 'gtr':
+                        instr += "slt $" + str(self.symbol.address) +", " +"$7" +", $" +str(expr.children[1].symbol.address) 
+                    if expr.children[0] == 'geq':
+                        instr += "addi " + "$4" +", $" +str(expr.children[1].symbol.address) + ", 1"
+                        instr += "\n\t"
+                        instr += "slt $" + str(self.symbol.address) +", " +"$7" +", $4"
+            else:
+                instr +="< Errore - no operation defined"
+        return instr + "\n"
+
+
+
 
     def _get_symbol_level(self):
         res = set()
@@ -857,26 +1174,48 @@ class AssignStat(Stat):
     def instr_dot_repr(self):
         return self.symbol.instr_dot_repr() + " := " + self.expr.instr_dot_repr()
 
-    def to_SSA(self):
+    def to_three_addr_form(self):
 
         if isinstance(self.expr, Var) or isinstance(self.expr, Const):
             return AssignStat(target=self.symbol, expr=self.expr, symtab=self.local_symtab)
 
-        SSA_list, expr_ssa = self.expr.to_SSA()
+        SSA_list, expr_ssa = self.expr.to_three_addr_form()
 
         SSA_list.append(AssignStat(target=self.symbol, expr=expr_ssa, symtab=self.local_symtab))
 
         return SSA_list
 
 class BranchStat(Stat):
-    def __init__(self, parent=None, cond=None, target=None, symtab=None):
+    def __init__(self, cond_var, on_true=None, on_false=None, symtab=None, parent=None):
         self.parent = parent
-        self.cond = cond  # cond == None -> True
-        self.target = target
-        if cond:
-            self.cond.parent = self
-        self.target.parent = self
+        self.cond_var = cond_var
         self.symtab = symtab
+
+        self.on_true = on_true
+        self.on_false = on_false
+
+    def get_uses(self):
+        return set([self.cond_var])
+
+    def set_on_true(self, BB):
+        self.on_true = BB
+
+
+    def set_on_false(self, BB):
+        self.on_false = BB
+
+    def generate_code(self):
+        res = "# " + self.instr_dot_repr() + "\n"
+
+        res += "\tbnez $" + str(self.cond_var.address) + ", " + self.on_true.lbl_begin + "\n"
+        res += "\tj " + self.on_false.lbl_begin + "\n"
+
+        return res
+
+    def instr_dot_repr(self):
+        return "BNEQZ "  + self.cond_var.instr_dot_repr()
+
+
 
     def collect_uses(self):
         try:
@@ -946,19 +1285,20 @@ class BinStat(Stat):
         return []
 
 
-class LoadStat(Stat):
-    def __init__(self, vars=None, parent=None, symbol=None, symtab=None):
+class StoreStat(Stat):
+    def __init__(self, variables, parent=None, symtab=None):
         
-        if vars is None:
-            self.to_load = []
+        if variables is None:
+            self.to_load = set()
         else:
-            self.to_load = vars
+            self.to_load = variables
 
         self.parent = parent
         self.symtab = symtab
+        self.fsym = symtab.fsym
 
-    def add_var_to_load(self, var):
-        self.to_load.append(var)
+    def add_var_to_store(self, var):
+        self.to_load.update(var)
 
     def instr_dot_repr(self):
 
@@ -967,7 +1307,91 @@ class LoadStat(Stat):
         for sym in self.to_load:
             res += sym.instr_dot_repr() + ", "
 
-        return  "Load {" + res[:-2] + "}"
+        return  "Store [" + res[:-2] + "]"
+
+
+    def generate_code(self):
+
+        code = ""
+
+        for sym in self.to_load:
+
+            if sym.temp:
+                continue
+
+            if sym.level == self.fsym:
+                # find the index on the stack
+
+                code += "# storing " + sym.name + "\n"
+
+                idx = self.fsym.stack.index(sym)
+
+                code +="\tsw $" + str(sym.address) + ", -" + str(idx*4) + "($fp)\n"
+
+            else:
+                # find the index on the stack of the parent function
+                code += "# storing " + sym.name + "\n"
+
+                fn_idx = self.fsym.stack.index(sym.level)
+                code +="\tlw $4, -" + str(fn_idx*4) + "($fp)\n"
+                idx = sym.level.stack.index(sym)
+                code +="\tsw $" + str(sym.address) + ", -" + str(idx*4) + "($4)\n"
+
+        return code
+
+
+class LoadStat(Stat):
+    def __init__(self, variables, parent=None, symtab=None):
+        
+        if variables is None:
+            self.to_load = set()
+        else:
+            self.to_load = variables
+
+        self.parent = parent
+        self.symtab = symtab
+        self.fsym = symtab.fsym
+
+    def add_var_to_load(self, var):
+        self.to_load.update(var)
+
+    def generate_code(self):
+
+        code = ""
+
+        for sym in self.to_load:
+
+            if sym.temp:
+                continue
+
+            if sym.level == self.fsym:
+                # find the index on the stack
+
+                code += "# loading " + sym.name + "\n"
+
+                idx = self.fsym.stack.index(sym)
+
+                code +="\tlw $" + str(sym.address) + ", -" + str(idx*4) + "($fp)\n"
+
+            else:
+                # find the index on the stack of the parent function
+                code += "# loading " + sym.name + "\n"
+
+                fn_idx = self.fsym.stack.index(sym.level)
+                code +="\tlw $4, -" + str(fn_idx*4) + "($fp)\n"
+                idx = sym.level.stack.index(sym)
+                code +="\tlw $" + str(sym.address) + ", -" + str(idx*4) + "($4)\n"
+
+        return code
+
+    def instr_dot_repr(self):
+
+        res = ""
+
+        for sym in self.to_load:
+            res += sym.instr_dot_repr() + ", "
+
+        return  "Load [" + res[:-2] + "]"
 
 
 
@@ -1080,8 +1504,27 @@ class PrintStat(Stat):
         self.symbol = symbol
         self.symtab = symtab
 
+    def get_uses(self):
+        return set([self.symbol])
+
     def collect_uses(self):
         return [self.symbol]
+
+    def generate_code(self):
+        res = "# " + self.instr_dot_repr() + "\n"
+
+        res += "\tori $2, $0, 1\n"
+        res += "\tor $4, $0, $" + str(self.symbol.address) +  "\n"
+
+        res += "\tsyscall\n"
+        # print a newline
+
+        res += "# print a newline\n"
+        res += "\taddi $a0, $0, 0xA\n" 
+        res += "\taddi $v0, $0, 0xB\n" 
+        res += "\tsyscall\n"
+
+        return res
 
     def get_function_call_uses(self):
         sym = self.symtab.find(self.symbol.name)
@@ -1098,8 +1541,9 @@ class InputStat(Stat):
         self.parent = parent
         self.symbol = symbol
         self.symtab = symtab
+        self.local_symtab = self.symtab
 
-    def collect_uses(self):
+    def collect_defs(self):
         return [self.symbol]
 
     def get_function_call_uses(self):
@@ -1109,6 +1553,21 @@ class InputStat(Stat):
         else :
             return [], []
 
+
+
+    def instr_dot_repr(self):
+        return "input " + self.symbol.instr_dot_repr() 
+
+
+    def generate_code(self):
+        res = "# " + self.instr_dot_repr() + "\n"
+
+        res += "\taddi $v0 , $0 , 5\n"
+        res += "\tsyscall\n"
+        res += "\tmove $" + str(self.symbol.address) +  ", $v0\n"
+
+        return res
+  
 
 # DEFINITIONS
 class Definition(IRNode):

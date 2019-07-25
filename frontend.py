@@ -7,6 +7,7 @@ from lexer import symbols as lex_symbols
 from lexer import lexer, __test_program
 from sys import argv
 from call_graph import CallGraph
+from register_alloc import *
 
 
 
@@ -274,6 +275,7 @@ def program():
 if __name__ == '__main__':
 
     # read from files passed as arguments
+    stop_inbetween = False
 
     the_lexer = None
     try:
@@ -282,14 +284,19 @@ if __name__ == '__main__':
         else:
             from string import join
 
-            with open(argv[-1], "r") as fin:
+            with open(argv[1], "r") as fin:
                 text = join(fin.readlines())
             the_lexer = lexer(text)
+
+            if len(argv) > 2:
+                stop_inbetween |= bool(argv[2])
     except Exception:
         # use the sample program in the lexer module
         the_lexer = lexer(__test_program)
 
-
+    debug("#######################################")
+    debug("############## FRONTEND ###############")
+    debug("#######################################")
 
     # Build the syntactic tree/IR tree
     res = program()
@@ -300,15 +307,22 @@ if __name__ == '__main__':
     #print '\n', res, '\n'
     print_dotty(res, "log.dot")
 
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
 
-    #print_symbol_tables(res)
     
     # the whole symbol table
     # as a tree structure
     symtab = SymbolTable(res)
+
     symtab.show_graphviz()
 
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
 
+    debug("#######################################")
+    debug("######### CONTROL FLOW GRAPH ##########")
+    debug("#######################################")
     # build the CFG from the IR
     cfg = CFG(res)
     
@@ -316,18 +330,33 @@ if __name__ == '__main__':
     # function
     cfg.graphviz()
 
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
 
-    # put the CFG into SSA form
-    cfg.SSA()
+    # put the CFG into three_addr_form form
+    cfg.three_addr_form()
 
-    # show the CFG in SSA for each
+    # show the CFG in three_addr_form for each
     # function
     cfg.graphviz()
+
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
+
+
+    debug("#######################################")
+    debug("############ CALL GRAPH ###############")
+    debug("#######################################")
 
     call_graph = CallGraph(cfg, symtab)
 
     call_graph.graphviz()
     
+
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
+
+
     debug("#######################################")
     debug("############ DATA LAYOUT ##############")
     debug("#######################################")
@@ -335,57 +364,104 @@ if __name__ == '__main__':
     data_layout(symtab, call_graph)
 
 
-    cfg.liveness_graphs(show=True)
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
+
+
+    debug("#######################################")
+    debug("########### LIVENESS GRAPH ############")
+    debug("#######################################")
+
+    liveness_graphs = cfg.liveness_graphs(show=True)
+
+    cfg.graphviz()
+
+
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
+
+    debug("#######################################")
+    debug("######## REGISTER ALLOCATION ##########")
+    debug("#######################################")
+
+    register_allocator = RegisterAllocator(liveness_graphs, cfg)
+
+    if stop_inbetween:
+        raw_input("Press any key to continue...")
+
+    cfg.code_generation("main.s")
+
+    print("End of compilation")
 
     sys.exit(0)
-    debug("printing the result - navigation")
-    res.navigate(print_stat_list)
-
-    debug("getting the list of nodes")
-
-    node_list = get_node_list(res)
-
-    debug("printing the list of nodes")
-    for n in node_list:
-        print type(n), id(n), '->', type(n.parent), id(n.parent)
-    print '\nTotal nodes in IR:', len(node_list), '\n'
-
-    debug("#### > starting to lowering")
-    res.navigate(lowering)
-    debug("#### < end of lowering")
-
-
-
     
 
 
-    data_layout(res)
-
-    raw_input("press the enter key to continue...")
-    debug(str(res.global_symtab))
-    debug(str(res.local_symtab))
-    raw_input("press the enter key to continue...")
-
-    raw_input("press the enter key to continue...")
-
-    node_list = get_node_list(res)
-    print '\n', res, '\n'
-    for n in node_list:
-        print type(n), id(n)
-        try:
-            n.flatten()
-        except Exception as e:
-            print e
-    res.navigate(flattening)
-
-    print '\n', res, '\n'
-
-    print_dotty(res, "log.dot")
-    raw_input("Ended log, now CFG")
 
 
-    cfg.liveness()
-    cfg.print_liveness()
-    cfg.print_cfg_to_dot("cfg.dot")
 
-    print "end of CFG"
+
+
+
+
+
+
+
+
+
+
+
+
+
+#    debug("printing the result - navigation")
+#    res.navigate(print_stat_list)
+#
+#    debug("getting the list of nodes")
+#
+#    node_list = get_node_list(res)
+#
+#    debug("printing the list of nodes")
+#    for n in node_list:
+#        print type(n), id(n), '->', type(n.parent), id(n.parent)
+#    print '\nTotal nodes in IR:', len(node_list), '\n'
+#
+#    debug("#### > starting to lowering")
+#    res.navigate(lowering)
+#    debug("#### < end of lowering")
+#
+#
+#
+#    
+#
+#
+#    data_layout(res)
+#
+#    raw_input("press the enter key to continue...")
+#    debug(str(res.global_symtab))
+#    debug(str(res.local_symtab))
+#    raw_input("press the enter key to continue...")
+#
+#    raw_input("press the enter key to continue...")
+#
+#    node_list = get_node_list(res)
+#    print '\n', res, '\n'
+#    for n in node_list:
+#        print type(n), id(n)
+#        try:
+#            n.flatten()
+#        except Exception as e:
+#            print e
+#    res.navigate(flattening)
+#
+#    print '\n', res, '\n'
+#
+#    print_dotty(res, "log.dot")
+#    raw_input("Ended log, now CFG")
+#
+#
+#    cfg.liveness()
+#    cfg.print_liveness()
+#    cfg.print_cfg_to_dot("cfg.dot")
+#
+#    print "end of CFG"
+#

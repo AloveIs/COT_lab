@@ -71,11 +71,39 @@ def lexer(text):
 
 # Test support
 __test_program = '''
+	VAR x, squ;
+	
+	PROCEDURE square;
+	VAR gian, maria;
+	BEGIN
+	   x := x * 2;
+	   ! x
+	END;
+	BEGIN
+	   	? x ;
+
+	   	WHILE x <= 10 DO
+	   	BEGIN
+		! x ;
+	   	x := x + 1
+	   	END;
+
+	   	! x;
+	   	
+	   	WHILE x <= 25 DO
+	   	BEGIN
+	   	call square;
+		! x ;
+	   	x := x + 1
+	   	END
+	END.
+	'''
+__test_program1 = '''
 	CONST ciao = 2 , miao = 3 ;
 	VAR x, squ;
 	
 	PROCEDURE square;
-	VAR gian, maria, culo ;
+	VAR gian, maria, carlo ;
 		PROCEDURE marco;
 		VAR luca, abc, ab, bc;
 		BEGIN

@@ -44,7 +44,16 @@ factor = ident | number | "(" expression ")".
 
 # Problems to fix
 
+ - translate x := y
+ - constant folding
+ - calls cannot be the first instruciton in a BB
+ - problem with useless variables that might be assigned to the same register as one useful variable
+ - InputStat
+ - Test functions
+
+##### Solved
+
+ - Functions can call only other functions that have been previously defined (**FEATURE**)
+ - at least one instruction after begin-end blocks
  - In the construction of the CFG if we have 2 omonymous functions one will overwrite the CFG of the other one (only the graph because of the name)
  - Test the for loop
- - Functions can call only other functions that have been previously defined 
- - call cannot be the first instruciton in a BB

@@ -1,7 +1,0 @@
-digraph marcoCFG140699876126224 {
-	140699876126224 [label=marco color=orange shape=house style=filled]
-	0 [label="End marco" color=red shape=house style=filled]
-	140699876126224 -> 140699876208784
-	140699876208784 [label="{temp_0_marco := ( ab times bc )|abc := ( temp_0_marco times x )}" shape=record]
-	140699876208784 -> 0
-}

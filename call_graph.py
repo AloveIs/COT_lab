@@ -50,7 +50,9 @@ class CallGraph:
         self.symtab = symtab
         self.cfg = cfg
 
+        # which functions another function calls
         self.function_calls = cfg.get_function_calls()
+        # which functions'  variables another function uses
         self.function_uses = cfg.get_function_dependency()
 
 

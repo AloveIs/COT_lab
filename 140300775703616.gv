@@ -1,5 +1,0 @@
-digraph 140300775703616 {
-	140300775703688 [label="temp_0_marco := ( ab times bc )" shape=record]
-	140300775703688 -> 140300775703760 [label="{ }"]
-	140300775703760 [label="abc := ( temp_0_marco times gian )" shape=record]
-}
